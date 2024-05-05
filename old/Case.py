@@ -9,7 +9,7 @@ import pandas as pd
 from copy import deepcopy
 import os,shutil,subprocess
 import time
-from aux_functions import progress_bar,File,os_cmd
+from aux_functions import progress_bar,File
 import numpy as np
 
 
@@ -146,11 +146,6 @@ class Case:
         return self
     
     def __output__att(self):
-        """
-        this function for internal use only!
-        it aims to parsing the self.out_files
-        to be modified in the future.
-        """
         for _,val in self.output_files.items():
             for att in val:
                 self.outputs[att]=[]
@@ -160,12 +155,6 @@ class Case:
     def import_FlagsMap(self,
                         filename="omari.xlsx",
                         sheetname="omari"):
-        """
-        import flag map from excel file.
-        
-        Remark: Csv and json files will be supported in future
-        
-        """
         tmp = pd.read_excel(filename,sheet_name=sheetname)
 
         self.FlagsMap = {flag:att for flag,att in zip(
@@ -183,82 +172,80 @@ class Case:
                 print("duplicate file!")
         return self
     
-    def launch_case(self,case_id:int=None,**kw):
-        if case_id is not None:
-            self.case_id=case_id
-
-        i=self.case_id
+    def launch(self,**kw):
+        self.__output__att()
         
-        # -----------------------------------------------------------------
-        # set/create current working directory 
-        self.current_case_dir = os_cmd.set_fullpath(#os.path.join(
-            self.__main_dir__, self.run_case_main_dir,
-            f"{self.run_case_sub_dir}_{self.case_id}")
-        #print(i,"flagsmap:",flagsmap)
-        
-        # -----------------------------------------------------------------
-        # create case subdirectory 
-        if self.new:
-            # -------------------------------------------------------------
-            # Make case subdirectory
-            os_cmd.mkdir(self.current_case_dir)
-            
-            # -------------------------------------------------------------
-            # copy objects (files/folders) to the case subdirecory
-            for f in self.objects_to_be_copied:
-                os_cmd.cp(f,self.current_case_dir)
-           
-            # --------------------------------------------------------------
-            # get_data_from database
-            rw ={att:val for att,val in self.database.iloc[i].items()}
-            flagsmap = self.FlagsMap.get_flags_values(rw)
-            
-            # -------------------------------------------------------------
-            # write input files in the case subdirecory
-            self.__write_input__(flagsmap)
-        
-            #execute commands
-            self.__execute__()
-        
-        # read output_files
-        self.__read_outputs__()
-        
-        # execute post execution fucntions
-        self.__execute_post_execution_functions__()
-
-        return self
-        
-    def create_case_main_dir(self):
-        return self.initialization()
-    
-    def initialization(self):
-        cases_root_path= os_cmd.set_fullpath(self.__main_dir__, self.run_case_main_dir)
         if self.run_type!="new":
             self.new = False
         else:
             self.new = True
-            os_cmd.rmdir(cases_root_path)
-        os_cmd.mkdir(cases_root_path)
-        return self
-    
-    def launch(self,**kw):
-        """
-        TO BE ADDED
-        """
-        self.initialization()
-        self.__output__att()
+
+        if self.new:
+            self.__rmdir__()
+        self.__mkdir__(
+            subdirname=os.path.join(
+                self.__main_dir__, 
+                self.run_case_main_dir
+                )
+            )
+        
         for i in progress_bar(name=self.name, start=0,end=len(self.database)):
             if self.__shall_stop():
                 print("Luncher has been stoped by user")
                 break
             # -----------------------------------------------------------------
+            case_id = i
             self.case_id=i    
-            self.launch_case(**kw)
+            
+            # get_data_from database
+            rw ={att:val for att,val in self.database.iloc[i].items()}
+            flagsmap = self.FlagsMap.get_flags_values(rw)
+            
+            # -----------------------------------------------------------------
+            # set curret workign directory 
+            self.current_case_dir = case_path = os.path.join(
+                self.__main_dir__, self.run_case_main_dir,
+                f"{self.run_case_sub_dir}_{case_id}")
+            #print(i,"flagsmap:",flagsmap)
+            
+            # -----------------------------------------------------------------
+            if self.new:
+                # Make case subdirectory
+                self.__mkdir__(case_path)
+                
+                # copy objects (files/folders) to the case subdirecory
+                for f in self.objects_to_be_copied:
+                    self.__cp__(f, case_path)
+            
+                # write input files in the case subdirecory
+                self.__write_input__(flagsmap)
+            
+                #execute commands
+                self.__execute__()
+            
+            # read output_files
+            self.__read_outputs__()
+            
+            # execute post execution fucntions
+            self.__execute_post_execution_functions__()
               
         return self
     
     def __shall_stop(self):
-        return os_cmd.isfile(os_cmd.set_fullpath(self.__main_dir__,self.run_case_main_dir,"STOP_ALL"))    
+        lines=[]
+        try:
+            with open("stop_condition","r") as fid:
+                lines=[x.strip() for x in fid]
+            print("Bingo")
+            return True
+        except:
+            return False
+        if len(lines)>0:
+            if lines[0]=="1":
+                print("Bingo")
+                return True
+        return False
+        
     
     def __execute__(self):
         self.__cd__(self.current_case_dir)
@@ -290,6 +277,34 @@ class Case:
 
         # return #os.system(self.exe_cmd)
 
+    def __mkdir__(self,subdirname="case"):
+        try:
+            os.mkdir(subdirname)
+            return 0 
+        except:
+            Warning(f"Folder {subdirname} is existed")
+            return -123
+        pass
+    
+    def __cp__(self,src,dst):
+        _,tail = os.path.split(src)
+        #print(tail)
+        #shutil.copytree('baz', 'foo', dirs_exist_ok=True)  # Fine
+        if os.path.isfile(src):
+            shutil.copy(src, os.path.join(dst, tail))
+        elif os.path.isdir(src):
+            shutil.copytree(src, os.path.join(dst, tail))
+        else:
+            print("Copying {} object is not supported")
+        return self
+
+    def __rmdir__(self):
+        directory=os.path.join(self.__main_dir__, self.run_case_main_dir)
+        try:
+            return shutil.rmtree(directory)
+        except:
+            Warning(f"Failed to remove {directory}")
+            return 1
     
     def __cd__(self,Dir):
         os.chdir(Dir)
@@ -300,7 +315,7 @@ class Case:
             f.replace(flagsmap)
             #print(os.path.join(case_path, f.filename))
             f.write(os.path.join(self.current_case_dir, f.filename))
-        return self
+        pass
     
     def __read_outputs__(self):
         for fname,cols in self.output_files.items():
@@ -331,29 +346,27 @@ if __name__=="__main__":
     A=Case()
     df=pd.DataFrame(data=dict(RHO=np.random.uniform(18,20,500),
                               WF=np.random.uniform(0.005,0.050,500)))
-    
-    df.to_excel("omari.xlsx","data",engine="xlsxwriter")
+    f = File(filename="input_file_2.py").read()
+    df.to_excel("omari.xlsx","data")
     A.import_database(sheetname="data")
     F = Flags().add_flag(flag("#RHO@@#","RHO","%5.2f"),
                          flag("#@wf@#","WF","%10s"),
         
         )
     A.FlagsMap=F
-    f = File(filename="./dummy_functions/input_file_2.py").read()
     A.add_file(f)
-    #A.__main_dir__ = "/home/omari/Desktop/labeeb_test"
-    A.exe_cmd =["python dummy_functions/input_file_2.py"]
-    A.objects_to_be_copied=["README.md","test"]
-    A.run_type = "new"
+    
+    A.exe_cmd =["python Pu239_Estimator.py"]
+    A.objects_to_be_copied=["Pu239_Estimator.py"]
+    A.run_type = "0new"
     A.run_case_main_dir="pu_simulator_sa"
-    A.output_files={}
     A.launch()
     print(F.get_flags_values(dict(RHO=123)))
     
 
-    # X=[]
-    # df2=pd.DataFrame(A.outputs)
-    # for i in range(len(A.database)):
-    #     X.append([x for x in df2["Pu239"][i]][-1])
+    X=[]
+    df2=pd.DataFrame(A.outputs)
+    for i in range(len(A.database)):
+        X.append([x for x in df2["Pu239"][i]][-1])
     
-    # plt.plot(A.database.WF,np.array(X)*239/6.023e23*4907*180/1000,"X")
+    plt.plot(A.database.WF,np.array(X)*239/6.023e23*4907*180/1000,"X")
