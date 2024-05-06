@@ -6,7 +6,7 @@ Created on Sun May  5 22:42:43 2024
 @author: omari
 """
 
-import time
+import time,datetime
 
 
 class Timer:

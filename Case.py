@@ -9,7 +9,7 @@ import pandas as pd
 from copy import deepcopy
 import os,shutil,subprocess
 import time
-from aux_functions import progress_bar,File,os_cmd
+from aux_functions import progress_bar,File,os_cmd,Timer
 import numpy as np
 
 
@@ -113,25 +113,21 @@ class Case:
     proiding it the database of the sampling, the flags map, the input files te
     """
     def __init__(self,name="",
-                 db=pd.DataFrame(),
-                 attributes=[],
-                 FlagsMap={},
-                 exe_cmd="",
-                 input_files=[],
-                 output_files=[]):
-        self.name = name
-        self.database = db
-        self.attributes = attributes
-        self.FlagsMap= FlagsMap
-        self.exe_cmd=[exe_cmd]
-        self.input=None
-        self.input_files = input_files
+                 output_files=[],**kwd):
+        self.name = None
+        self.database = None
+        #self.attributes = None
+        self.FlagsMap= {}
+        self.exe_cmd=[]
+        #self.input=None
+        self.input_files = []
+        
         self.__main_dir__ = os.getcwd()
         self.run_case_main_dir = "omari"
         self.run_case_sub_dir="case"
+        self.current_case_dir = None
         
         self.objects_to_be_copied=[]
-        self.current_case_dir = None
         
         self.new = True
         self.run_type = "read_only"
@@ -139,6 +135,8 @@ class Case:
         self.output_files ={"omari.csv":["Time","Pu239"]}
         self.outputs={}
         self.__output__att()
+        
+        self.__kwargs_hanlder(**kwd)
         
     def import_database(self,filename="omari.xlsx",sheetname="omari"):
         self.database = pd.read_excel(filename,sheet_name=sheetname)
@@ -175,15 +173,19 @@ class Case:
     def add_file(self,*file:File()):
         for f in file:
             if not isinstance(file,File):
-                Warning("Bad entry",type(file),type(File))
+                #Warning("Bad entry",type(file),type(File))
                 #return self
+                pass
             if f not in self.input_files:
                 self.input_files.append(f.read())
+                print(f"file {f.fname} has been added to [{self.name}]",len(self.input_files))
             else:
                 print("duplicate file!")
         return self
     
     def launch_case(self,case_id:int=None,**kw):
+        T = Timer()
+        T.tic()
         if case_id is not None:
             self.case_id=case_id
 
@@ -218,13 +220,20 @@ class Case:
             self.__write_input__(flagsmap)
         
             #execute commands
-            self.__execute__()
+            stat=self.__execute__()
+            for s in stat:
+                if stat!=0:
+                    #raise "Error"
+                    pass
+            #print(stat)
         
         # read output_files
         self.__read_outputs__()
         
         # execute post execution fucntions
         self.__execute_post_execution_functions__()
+        
+        T.toc()
 
         return self
         
@@ -247,14 +256,15 @@ class Case:
         """
         self.initialization()
         self.__output__att()
-        for i in progress_bar(name=self.name, start=0,end=len(self.database)):
+        ProgBar=progress_bar(name=self.name, start=0,end=len(self.database))
+        for i in ProgBar:
             if self.__shall_stop():
                 print("Luncher has been stoped by user")
                 break
             # -----------------------------------------------------------------
             self.case_id=i    
             self.launch_case(**kw)
-              
+            #print(ProgBar.timer)  
         return self
     
     def __shall_stop(self):
@@ -299,7 +309,9 @@ class Case:
         for f in self.input_files:
             f.replace(flagsmap)
             #print(os.path.join(case_path, f.filename))
-            f.write(os.path.join(self.current_case_dir, f.filename))
+            fname=f.filename
+            #file_path=os_cmd.set_fullpath(self.current_case_dir, fname)
+            f.write(os.path.join(self.current_case_dir, fname))
         return self
     
     def __read_outputs__(self):
@@ -319,13 +331,23 @@ class Case:
         for item,val in kwd.items():
             if item in self.__dict__:
                 self.__setattr__(item, val)
-            pass
+            elif item.lower() in ["root_dir","main_dir"]:
+                self.__main_dir__ =val
+            else:
+                print(f"{item} is not supported")
+    
+    def set_vars(self,**kwd):
+        self.__kwargs_hanlder(**kwd)
+        return self
+    
+    def update_db(self,**kwd):
+        print("this is dummpy function [updating database] :",self.name)
                         
         
 
 
 if __name__=="__main__":
-    from matplotlib import pyplot as plt
+    #from matplotlib import pyplot as plt
   
     
     A=Case()
@@ -339,10 +361,10 @@ if __name__=="__main__":
         
         )
     A.FlagsMap=F
-    f = File(filename="./dummy_functions/input_file_2.py").read()
+    f = File(file_path="./dummy_functions/input_file_2.py").set_args(fname_is_path=0).read()
     A.add_file(f)
     #A.__main_dir__ = "/home/omari/Desktop/labeeb_test"
-    A.exe_cmd =["python dummy_functions/input_file_2.py"]
+    A.exe_cmd =["python ./input_file_2.py>log"]
     A.objects_to_be_copied=["README.md","test"]
     A.run_type = "new"
     A.run_case_main_dir="pu_simulator_sa"

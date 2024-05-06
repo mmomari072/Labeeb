@@ -5,5 +5,5 @@ Created on Sun May  5 23:37:31 2024
 
 @author: omari
 """
-
-print()
+RHO=#RHO@@#
+print(f"Density Value {RHO}")
