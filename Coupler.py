@@ -94,6 +94,8 @@ class coupler:
             os_cmd.rmdir(cases_root_path)
         os_cmd.mkdir(cases_root_path)
         return self
+    
+    
     def launch_case(self,c_step:int=None,**kw):
         if c_step is not None:
             self.c_step=c_step
