@@ -372,7 +372,7 @@ if __name__=="__main__":
     A.launch()
     print(F.get_flags_values(dict(RHO=123)))
     
-
+    df.iloc[0]
     # X=[]
     # df2=pd.DataFrame(A.outputs)
     # for i in range(len(A.database)):
