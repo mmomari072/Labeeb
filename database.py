@@ -412,7 +412,7 @@ class database(dict):
             raise print("error")
         super().__setattr__(name, value)
 
-    def import_from_file(self, filename="omari_labeel.csv",clear=True,append=False):
+    def import_from_file(self, filename="omari_labeel.csv",clear=True,append=False,columns:list=[]):
         if clear:
             self.clear()
         with open(filename,"r") as fid:
@@ -423,7 +423,14 @@ class database(dict):
             else:
                 i=0
             for c in csv_r:
-                self.update_row(row_id=i,data=c)
+                tmp=c
+                if len(columns)!=0:
+                    #tmp={}
+                    # for cc in columns:
+                    #     tmp[cc]=c[cc]
+                    pass
+                
+                self.update_row(row_id=i,data=tmp)
                 i+=1
         return self
         
@@ -489,10 +496,10 @@ class database(dict):
             try:
                 self[c][row_id]=v
             except:
-                return
                 if c not in self and add_new:
                     self[c]=attribute(c,data=[v])
                 else:
+                    return 
                     raise "Mush 3arf shoo badi a76"
         return self
     

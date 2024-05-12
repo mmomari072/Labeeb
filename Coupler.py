@@ -8,17 +8,61 @@ from Case import Case,Flags,flag,File,progress_bar,os_cmd,database,attribute
 import pandas as pd
 import numpy as np
 import os
+import copy 
 
 import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
-class coupler:
+class coupler(dict):
+    class __case:
+        __extra_att=["working_case","current_step","list"]
+        def __init__(self,obj):
+            self.obj =  obj
+        
+        def __getitem__(self,name):
+            for case in self.obj._cases:
+                if case.name==name:
+                    return case
+                
+            
+        
+        
+        # def working_case(self):
+        #     return self.obj.case_name
+        def __getattr__(self,name):
+            #print(name)
+            if name in ["working_case"]:
+                #print(name)
+                return copy.copy(self.obj.case_name)
+            elif name in ["current_step"]:
+                return copy.copy(self.obj.c_step)
+            elif name in ["list"]:
+                return [x.name for x in self.obj._cases]
+            elif name in self.list:
+                return self[name]
+            
+            
+            
+            
+            #raise TabError(f"[{name}] is not supported")
+            
+        def __dir__(self):
+            return self.__extra_att+self.list
+        
+        def __setattr__(self, name, value):
+            if name in self.__extra_att:# ["working_case"]:
+                raise TabError(f"You cannot set attribute [{name}]")
+            elif name in ["obj"]:
+                super().__setattr__(name, value)
+            else:
+                raise TabError(f"{name}")
+        
     def __init__(self,name,**kwd):
         self.name:str =name
         self.description:str=None 
         self.database:None =None
         
-        self.__cases=[]
+        self._cases=[]
         self.__coupling_functions=[]
         
         self.__main_dir__ = os.getcwd()
@@ -32,6 +76,13 @@ class coupler:
         self.run_type = "new"
         
         self.c_step:int=None
+        self.case_name = None
+        
+        self.__case = self.__case(self)
+    
+    def __getattr__(self, name):
+        if name in ["case"]:
+            return self.__case
         
     def __kwargs_hanlder(self,**kwd):
         for item,val in kwd.items():
@@ -43,8 +94,8 @@ class coupler:
                 print(f"{item} is not supported")
     def add_cases(self,*cases:Case):
         for c in cases:
-            if c not in self.__cases:
-                self.__cases.append(c)
+            if c not in self._cases:
+                self._cases.append(c)
                 pass
             else:
                 print(f"same case [{c}] has been entered before!")
@@ -109,13 +160,16 @@ class coupler:
             f"{self.run_case_sub_dir}_{self.c_step}")
         #print(i,"flagsmap:",flagsmap)
         
-        for case in self.__cases:
+        for case in self._cases:
+            self.case_name = case.name
             case.set_vars(root_dir=self.current_case_dir)
             #case.update_db()
             case.database.update_row(
                 row_id=0,data=self.database.get_row(self.c_step),
                 add_new=False)
             case.launch()
+            self.__execute_coupling_functions__(**kw)
+            
         
         return self
     
@@ -129,7 +183,9 @@ class coupler:
     
     def update_db(self):
         pass
-
+    
+    def __dir__(self):
+        return [x for x in self.__dict__.keys() if x.find("_")!=0]+["case"]
 if __name__=="__main__":
 
     couple_mcnp_relap = coupler(name="mcnp_relap")
@@ -166,11 +222,12 @@ if __name__=="__main__":
         RHO=[1,2,3],WF=[6,7,8],OMARI=[100,200,300]))
     
     def fun1(self,*k):
-        print("fun1",self.title)
+        print("fun1",self.name)
         self.name="omari"
     
     def fun2(self,*k):
-        print("fun2",self.title)
+        print("fun2",self.case_name)
+
     couple_mcnp_relap.add_coupling_functions(fun1,fun2)
     
     couple_mcnp_relap.launch()
