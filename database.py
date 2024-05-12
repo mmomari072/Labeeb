@@ -6,16 +6,28 @@ Created on Thu May  2 14:15:15 2024
 @author: omari
 """
 import random
-import pickle
+import csv,json,pickle
 
-
+class str2num:
+    def __init__(self,x,type=float):
+        self.x=x
+        self.type=type
+        pass
+    def convert(self):
+        try:
+            return self.type(self.x)
+        except:
+            if self.x=='':
+                return None
+            return self.x
+        
 class _list(list):
     def __init__(self, name, description: str = None, Type=None, unit=None, data=[]):
         super().__init__()
 
 
 class attribute(list):
-    def __init__(self, name, description: str = None, Type=None, unit=None, data=[]):
+    def __init__(self, name, description: str = None, Type=float, unit=None, data=[]):
         super().__init__()
         self.name: str = name
         self.description = description
@@ -92,7 +104,11 @@ class attribute(list):
         print("xor")
         return self.__operation__(x, "+")
 
-    def __and__(self, x):
+    def __and__(self, x)->bool:
+        """
+        test.
+        ss.
+        """
         print("and")
         return self.__operation__(x, "and")
 
@@ -175,7 +191,11 @@ class attribute(list):
     def __dir__(self):
         return [x for x in super().__dir__() if x.find("__") < 0]
 
-    def __setitem__(self, i, value):
+    def __setitem__(self, i, val):
+        if self.type is not None:
+            value = str2num(val,self.type).convert()
+        else:
+            value=val
         try:
             super().__setitem__(i, value)
         except:
@@ -283,10 +303,18 @@ class database(dict):
         self.description: str = None
         self.db_filepath = "./omari.pkl"
 
-        self.auto_refersh = False
-        self["__db_index__"] = attribute("__db_index__", data=[])
-
-        # self.get=self.__get(self)
+        
+        self.get=self.__get(self)
+        
+        for ky,val in data.items():
+            self.auto_refersh = False
+            self[ky]=attribute(name=ky,data=val)
+        
+        self.auto_refersh = True
+    
+        self["__db_index__"] = attribute("__db_index__", 
+                                         data=[i for i in range(self.size()[0])],
+                                         Type=int)
 
         pass
 
@@ -297,8 +325,10 @@ class database(dict):
                 #print(a)
 
     def __setitem__(self, name, value):
-        if type(value) is not attribute:
-            raise print("Error")
+        if type(value) is not attribute or not isinstance(value,(list,tuple)):
+            if len(self.keys())!=0:
+                print(self.keys())
+                raise print("Error")
         super().__setitem__(name, value)  # self[name]=value
         # db_len=[len(att) for _,att in self.items()]
         if self.auto_refersh:
@@ -306,6 +336,7 @@ class database(dict):
         
 
     def refresh_index(self):
+        #print(super().items(),self.items())
         db_len = [len(att) for _, att in super().items()]
         #print(db_len)
         db_max_len = max(db_len)
@@ -327,11 +358,12 @@ class database(dict):
         try:
             return super().__getitem__(name)
         except:
-            print(name)
-            if name in self:
-                return self[name]
-            else:
-                raise print("Error")
+            # print(name)
+            # if name in self:
+            #     return self[name]
+            # else:
+            #     raise print("Error 000")
+            pass
 
         return
 
@@ -363,8 +395,11 @@ class database(dict):
         elif column is None:
             return self.get_data(row, self.columns())
 
-    def get_row(self, row):
-        return database(data={att: val[row] for att, val in self.__data.items()})
+    def get_row(self, row:[int,list,tuple]=[]):
+        if isinstance(row,(list,tuple)):
+            return database(name="",data={att: val[row] for att, val in self.items()})
+        elif isinstance(row, int):
+            return {att: val[row] for att, val in self.items()}
 
     def get_column(self, col_id: str):
         return self[col_id]
@@ -377,11 +412,44 @@ class database(dict):
             raise print("error")
         super().__setattr__(name, value)
 
-    def import_from_file(self, filename):
+    def import_from_file(self, filename="omari_labeel.csv",clear=True,append=False):
+        if clear:
+            self.clear()
+        with open(filename,"r") as fid:
+            csv_r=csv.DictReader(fid)
+            if append:
+                self.refresh_index()
+                i,_=self.size() 
+            else:
+                i=0
+            for c in csv_r:
+                self.update_row(row_id=i,data=c)
+                i+=1
+        return self
+        
+        
+        
         pass
 
-    def export_to_file(self, filename):
-        pass
+    def export_to_file(self, filename="omari_labeel.csv"):
+        
+        self.refresh_index()
+        header = [ x for x in self.keys() if x!="__db_index__"] ;header.sort()
+        header = ["__db_index__"]+header
+        irow,c = self.size()
+        with open(filename,"w",newline="") as fid:
+            #print(",".join(header),end=",\n",file=fid)
+            writer= csv.DictWriter(fid, fieldnames=header)
+            writer.writeheader()
+            #writer.writerow()
+            for i in range(irow):
+                #print(i)
+                writer.writerow(self.get_row(i))
+                #line =",".join([str(tmp[x]) for x in header])
+                #print(line,end=",\n",file=fid)
+        return self
+                
+            
 
     def save(self):
         with open(self.db_filepath, "wb") as fid:
@@ -416,11 +484,46 @@ class database(dict):
             #print("*"*80,a,"*"*80)
             for i,v in a.items():
                 self[i]=v
-    def update_row(self,row_id=0,data={}):
+    def update_row(self,row_id=0,data={},add_new=True):
         for c,v in data.items():
-            self[c][row_id]=v
+            try:
+                self[c][row_id]=v
+            except:
+                return
+                if c not in self and add_new:
+                    self[c]=attribute(c,data=[v])
+                else:
+                    raise "Mush 3arf shoo badi a76"
         return self
-
+    
+    def show_table(self):
+        for i in range(5):
+            print(db.get.row(i))
+        pass
+    
+    def size(self):
+        db_len = [len(att) for _, att in super().items()]
+        #print(db_len)
+        db_max_len = max(db_len) if len(db_len) !=0 else 0
+        return db_max_len,len(self.keys())
+    def append(self,data:dict={}):
+        for k,v in data.items():
+            self[k].append(v)
+        self.refresh_index()
+        return self
+    def clear(self,attr:list[str]=[]):
+        if len(attr)==0 or attr is None:
+            attr_list=self.keys()
+        else:
+            attr_list=attr
+        for a in attr_list:
+            self[a].clear()
+        return self
+    def __len__(self):
+        db_len = [len(att) for _, att in super().items()]
+        #print(db_len)
+        db_max_len = max(db_len) if len(db_len) !=0 else 0
+        return db_max_len
 
 if __name__=="__main__":
     A = attribute("test", data=[1, 2, 3, 4, 1, 2, 3, 2, 1, 5, 7])

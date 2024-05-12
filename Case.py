@@ -11,6 +11,7 @@ import os,shutil,subprocess
 import time
 from aux_functions import progress_bar,File,os_cmd,Timer
 import numpy as np
+from database import database, attribute
 
 
 
@@ -114,7 +115,7 @@ class Case:
     """
     def __init__(self,name="",
                  output_files=[],**kwd):
-        self.name = None
+        self.name = name
         self.database = None
         #self.attributes = None
         self.FlagsMap= {}
@@ -256,7 +257,13 @@ class Case:
         """
         self.initialization()
         self.__output__att()
-        ProgBar=progress_bar(name=self.name, start=0,end=len(self.database))
+        # try:
+        #     nrow,ncol=self.database.size(
+        #     )
+        # except:
+        #     nrow = len(self.database)
+        nrow = len(self.database)    
+        ProgBar=progress_bar(name=self.name, start=0,end=nrow)
         for i in ProgBar:
             if self.__shall_stop():
                 print("Luncher has been stoped by user")
@@ -351,15 +358,22 @@ if __name__=="__main__":
   
     
     A=Case()
-    df=pd.DataFrame(data=dict(RHO=np.random.uniform(18,20,500),
-                              WF=np.random.uniform(0.005,0.050,500)))
-    
-    df.to_excel("omari.xlsx","data",engine="xlsxwriter")
-    A.import_database(sheetname="data")
+    N=100
+    if 0:
+        df=pd.DataFrame(data=dict(RHO=np.random.uniform(18,20,N),
+                                  WF=np.random.uniform(0.005,0.050,N)))
+        # df.to_excel("omari.xlsx","data",engine="xlsxwriter")
+        # A.import_database(sheetname="data")
+    else:
+        data = dict(RHO=list(np.random.uniform(18,20,N)),
+                              WF=list(np.random.uniform(0.005,0.050,N)))
+        df=database(data=dict(RHO=list(np.random.uniform(18,20,N)),
+                              WF=list(np.random.uniform(0.005,0.050,N))))
     F = Flags().add_flag(flag("#RHO@@#","RHO","%5.2f"),
                          flag("#@wf@#","WF","%10s"),
         
         )
+    A.database=df
     A.FlagsMap=F
     f = File(file_path="./dummy_functions/input_file_2.py").set_args(fname_is_path=0).read()
     A.add_file(f)

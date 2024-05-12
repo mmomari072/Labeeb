@@ -60,7 +60,10 @@ class progress_bar:
         pass
     
     def __calculate_progress__(self):
-        self.__progress__= (self.__index__-self.start)/(self.end-self.start-1)
+        n=0
+        #self.__progress__= (self.__index__-self.start)/(self.end-self.start-1)
+        self.__progress__= (self.__index__-self.start)/(self.end-self.start-n)
+
         self.__time__remaining= (self.end-self.__index__-1)*self.timer._deltas_[-1]/self.timer._times_[-1]
         pass
     
@@ -71,6 +74,8 @@ class progress_bar:
         return self
     
     def __next__(self):
+        if self.end-self.start<=0:
+            raise StopIteration
         if self.__index__ < self.end:
             self.timer.toc()
             self.__calculate_progress__()
@@ -78,6 +83,9 @@ class progress_bar:
             self.__print_progress__()
             return self.__index__-1
         #self.__index__
+        self.__progress__=1
+        self.__print_progress__()
+
         print()
         raise StopIteration
     def __print_progress__(self):
@@ -89,5 +97,5 @@ class progress_bar:
         
         if self.__tmp_len_char!=int(self.col_len*self.__progress__):
             #print(self.timer._deltas_[-1])
-            print(f"\r({100*self.__progress__:6.2f}%)[{f}{e}] [Et:{E_time}][Rt:{R_time}]",end="")
+            print(f"\r[CASE:{self.name}]({100*self.__progress__:6.2f}%)[{f}{e}] [Et:{E_time}][Rt:{R_time}]",end="")
             #self.__tmp_len_char=int(self.col_len*self.__progress__)

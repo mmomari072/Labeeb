@@ -4,7 +4,7 @@ Created on Tue Nov 28 11:47:15 2023
 
 @author: mohammed.omari
 """
-from Case import Case,Flags,flag,File,progress_bar,os_cmd
+from Case import Case,Flags,flag,File,progress_bar,os_cmd,database,attribute
 import pandas as pd
 import numpy as np
 import os
@@ -13,8 +13,8 @@ import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
 class coupler:
-    def __init__(self,**kwd):
-        self.name:str =None
+    def __init__(self,name,**kwd):
+        self.name:str =name
         self.description:str=None 
         self.database:None =None
         
@@ -111,7 +111,10 @@ class coupler:
         
         for case in self.__cases:
             case.set_vars(root_dir=self.current_case_dir)
-            case.update_db()
+            #case.update_db()
+            case.database.update_row(
+                row_id=0,data=self.database.get_row(self.c_step),
+                add_new=False)
             case.launch()
         
         return self
@@ -129,63 +132,38 @@ class coupler:
 
 if __name__=="__main__":
 
-    df=pd.DataFrame(data=dict(RHO=np.random.uniform(18,20,2),
-                              WF=np.random.uniform(0.005,0.050,2)))
+    couple_mcnp_relap = coupler(name="mcnp_relap")
     
-    A=Case("mcnp")
-    df.to_excel("omari_mcnp.xlsx","data",engine="xlsxwriter")
-    A.import_database(filename="omari_mcnp.xlsx",sheetname="data")
-    F = Flags().add_flag(flag("#RHO@@#","RHO","%5.2f"),
-                         flag("#@wf@#","WF","%10s"),
+    mcnp_case=Case("mcnp")
+    mcnp_case.database=database(name="mcnp_tbl",data={"RHO":[None],"WF":[None]})
+    mcnp_case.add_file(
+        File(file_path="./dummy_functions/mcnp_dfun1.py").set_args(fname_is_path=0),
+        File(file_path="./README.md").set_args(fname_is_path=0),
+               )
+    mcnp_case.exe_cmd =["python ./mcnp_dfun1.py>log"]
+    mcnp_case.run_type = "new"
+    mcnp_case.run_case_main_dir="mcnp"
+    mcnp_case.output_files={}
+    mcnp_case.FlagsMap = Flags().add_flag(flag("#RHO@@#","RHO","%5.2f"),
+                          flag("#@wf@#","WF","%10s"))
         
-        )
-    A.FlagsMap=F
-    f = File(file_path="./dummy_functions/input_file_2.py").set_args(fname_is_path=0).read()
-    A.add_file(f)
-    #A.__main_dir__ = "/home/omari/Desktop/labeeb_test"
-    A.exe_cmd =["python ./input_file_2.py>log"]
-    #A.objects_to_be_copied=["README.md","test"]
-    A.run_type = "new"
-    A.run_case_main_dir="mcnp"
-    A.output_files={}
+    relap_case=Case("relap")
+    relap_case.database=database(name="relap_tbl",data={"RHO":[None],"OMARI":[None]})
+    relap_case.add_file(
+        File(file_path="./dummy_functions/relap_dfun1.py").set_args(fname_is_path=0),
+        File(file_path="./README.md").set_args(fname_is_path=0),
+               )
     
-    B=Case("relap")
-    df=pd.DataFrame(data=dict(RHO=np.random.uniform(18,20,2),
-                              WF=np.random.uniform(0.005,0.050,2)))
+    relap_case.exe_cmd =["python ./relap_dfun1.py>log"]
+    relap_case.run_type = "new"
+    relap_case.run_case_main_dir="relap"
+    relap_case.output_files={}
+    relap_case.FlagsMap = Flags().add_flag(flag("#RHO@@#","RHO","%5.2f"),
+                          flag("#@wf@#","OMARI","%10s"))
     
-    df.to_excel("omari_relap.xlsx","data",engine="xlsxwriter")
-    B.import_database(sheetname="data",filename="omari_relap.xlsx")
-    F2 = Flags().add_flag(flag("#RHO@@#","RHO","%5.2f"),
-                         flag("#@wf@#","WF","%10s"),
-        
-        )
-    B.FlagsMap=F2
-    f1 = File(file_path="./dummy_functions/input_file_3.py").set_args(fname_is_path=0).read()
-    B.add_file(f1)
-    #A.__main_dir__ = "/home/omari/Desktop/labeeb_test"
-    B.exe_cmd =["python ./input_file_3.py>log"]
-    #B.objects_to_be_copied=["README.md","test"]
-    B.run_type = "new"
-    B.run_case_main_dir="relap"
-    B.output_files={}
-    
-    C=Case("Mccard")
-    df=pd.DataFrame(data=dict(RHO=np.random.uniform(18,20,2),
-                              WF=np.random.uniform(0.005,0.050,2)))
-    F2 = Flags().add_flag(flag("#RHO@@#","RHO","%5.2f"),
-                          flag("#@wf@#","WF","%10s"),
-        
-        )
-    C.FlagsMap=F2
-    f2 = File(file_path="README.md").set_args(fname_is_path=0).read()
-    C.add_file(f2)
-    C.import_database(sheetname="data",filename="omari_relap.xlsx")
-    #A.__main_dir__ = "/home/omari/Desktop/labeeb_test"
-    C.exe_cmd =["echo McCARD>>log2"]
-    #B.objects_to_be_copied=["README.md","test"]
-    C.run_type = "new"
-    C.run_case_main_dir="mccard"
-    C.output_files={}
+    couple_mcnp_relap.add_cases(mcnp_case,relap_case)
+    couple_mcnp_relap.database=database("coupling_db",data=dict(
+        RHO=[1,2,3],WF=[6,7,8],OMARI=[100,200,300]))
     
     def fun1(self,*k):
         print("fun1",self.title)
@@ -193,24 +171,96 @@ if __name__=="__main__":
     
     def fun2(self,*k):
         print("fun2",self.title)
+    couple_mcnp_relap.add_coupling_functions(fun1,fun2)
     
-    c=coupler(name="omari",database="None")
-    #c.add_coupling_functions(fun1,fun2)
+    couple_mcnp_relap.launch()
     
-    c.add_cases(A,B)
+    # A.FlagsMap = F = Flags().add_flag(flag("#RHO@@#","RHO","%5.2f"),
+    #                      flag("#@wf@#","WF","%10s"),
     
-    df=pd.DataFrame(data=dict(RHO=np.random.uniform(18,20,3),
-                              WF=np.random.uniform(0.005,0.050,3)))
     
-    df.to_excel("omari_coupling.xlsx","data",engine="xlsxwriter")
-    c.database=df
-    c.run_case_main_dir ="mcnp_relap_c"
+    # df=pd.DataFrame(data=dict(RHO=np.random.uniform(18,20,2),
+    #                           WF=np.random.uniform(0.005,0.050,2)))
     
-    d=coupler()
+    # A=Case("mcnp")
+    # df.to_excel("omari_mcnp.xlsx","data",engine="xlsxwriter")
+    # A.import_database(filename="omari_mcnp.xlsx",sheetname="data")
+    # F = Flags().add_flag(flag("#RHO@@#","RHO","%5.2f"),
+    #                      flag("#@wf@#","WF","%10s"),
+        
+    #     )
+    # A.FlagsMap=F
+    # f = File(file_path="./dummy_functions/input_file_2.py").set_args(fname_is_path=0).read()
+    # A.add_file(f)
+    # #A.__main_dir__ = "/home/omari/Desktop/labeeb_test"
+    # A.exe_cmd =["python ./input_file_2.py>log"]
+    # #A.objects_to_be_copied=["README.md","test"]
+    # A.run_type = "new"
+    # A.run_case_main_dir="mcnp"
+    # A.output_files={}
     
-    d.database=df
-    d.add_cases(c,C)
+    # B=Case("relap")
+    # df=pd.DataFrame(data=dict(RHO=np.random.uniform(18,20,2),
+    #                           WF=np.random.uniform(0.005,0.050,2)))
     
-    d.launch()
+    # df.to_excel("omari_relap.xlsx","data",engine="xlsxwriter")
+    # B.import_database(sheetname="data",filename="omari_relap.xlsx")
+    # F2 = Flags().add_flag(flag("#RHO@@#","RHO","%5.2f"),
+    #                      flag("#@wf@#","WF","%10s"),
+        
+    #     )
+    # B.FlagsMap=F2
+    # f1 = File(file_path="./dummy_functions/input_file_3.py").set_args(fname_is_path=0).read()
+    # B.add_file(f1)
+    # #A.__main_dir__ = "/home/omari/Desktop/labeeb_test"
+    # B.exe_cmd =["python ./input_file_3.py>log"]
+    # #B.objects_to_be_copied=["README.md","test"]
+    # B.run_type = "new"
+    # B.run_case_main_dir="relap"
+    # B.output_files={}
+    
+    # C=Case("Mccard")
+    # df=pd.DataFrame(data=dict(RHO=np.random.uniform(18,20,2),
+    #                           WF=np.random.uniform(0.005,0.050,2)))
+    # F2 = Flags().add_flag(flag("#RHO@@#","RHO","%5.2f"),
+    #                       flag("#@wf@#","WF","%10s"),
+        
+    #     )
+    # C.FlagsMap=F2
+    # f2 = File(file_path="README.md").set_args(fname_is_path=0).read()
+    # C.add_file(f2)
+    # C.import_database(sheetname="data",filename="omari_relap.xlsx")
+    # #A.__main_dir__ = "/home/omari/Desktop/labeeb_test"
+    # C.exe_cmd =["echo McCARD>>log2"]
+    # #B.objects_to_be_copied=["README.md","test"]
+    # C.run_type = "new"
+    # C.run_case_main_dir="mccard"
+    # C.output_files={}
+    
+    # def fun1(self,*k):
+    #     print("fun1",self.title)
+    #     self.name="omari"
+    
+    # def fun2(self,*k):
+    #     print("fun2",self.title)
+    
+    # c=coupler(name="omari",database="None")
+    # #c.add_coupling_functions(fun1,fun2)
+    
+    # c.add_cases(A,B)
+    
+    # df=pd.DataFrame(data=dict(RHO=np.random.uniform(18,20,3),
+    #                           WF=np.random.uniform(0.005,0.050,3)))
+    
+    # df.to_excel("omari_coupling.xlsx","data",engine="xlsxwriter")
+    # c.database=df
+    # c.run_case_main_dir ="mcnp_relap_c"
+    
+    # d=coupler()
+    
+    # d.database=df
+    # d.add_cases(c,C)
+    
+    # d.launch()
     
     
