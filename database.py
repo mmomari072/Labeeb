@@ -7,6 +7,8 @@ Created on Thu May  2 14:15:15 2024
 """
 import random
 import csv,json,pickle
+import datetime
+import copy
 
 class str2num:
     def __init__(self,x,type=float):
@@ -27,15 +29,34 @@ class _list(list):
 
 
 class attribute(list):
-    def __init__(self, name, description: str = None, Type=float, unit=None, data=[]):
+    def __init__(self, name,data=[], description: str = None, Type=float, unit=None, **kw):
+        """
+        List base attray
+        """
         super().__init__()
         self.name: str = name
         self.description = description
         self.type = Type
         self.unit = unit
         self.__fun_list = []
-        self.__append(data)
+        #self.__append(data)
         self.__non_entered_value__ = None
+        self.non_entered_datum_value = None
+        self.instance_type_check = True
+        #
+        self.__kwargs_parser__(**kw)
+        for i,v in enumerate(data):
+            self.append(str2num(v,self.type).convert())
+            #self[i]=v
+        pass
+    
+    def __kwargs_parser__(self,**kw):
+        for ky, val in kw.items():
+            if ky in self.__dict__:
+                self.__setattr__(ky, val)
+            else:
+                Warning(f"this attribute [{ky}] is not supported")
+        return self
 
     def __operation__failure_check(self, x, operator: str):
         if not isinstance(x, (attribute, list, tuple)):
@@ -203,7 +224,7 @@ class attribute(list):
             if isinstance(i, int):
                 if 0 <= i:
                     for j in range(len(self), i):
-                        self.append(self.__non_entered_value__)
+                        self.append(self.non_entered_datum_value)
                     else:
                         self.append(value)
                 elif 0 > i:
@@ -250,7 +271,7 @@ class attribute(list):
 
     def resize(self, newlength: int):
         if len(self) < newlength:
-            self[newlength-1] = self.__non_entered_value__
+            self[newlength-1] = self.non_entered_datum_value
         elif len(self) > newlength:
             [self.pop() for i in range(newlength, len(self))]
         return self
@@ -273,11 +294,15 @@ class attribute(list):
     UNIT:{self.unit}
     TYPE:{self.type}
     LEN :{len(self)}
-    VALU:{self[:]}
     """
+    def set_type(self):
+        for i in range(len(self)):
+            self[i]=str2num(self[i],self.type).convert()
+        return self
 
 
 class database(dict):
+    # ====================================
     class __get:
         def __init__(self, upper_cls):
             self.object = upper_cls
@@ -298,37 +323,63 @@ class database(dict):
         def __dir__(self):
             return ["col", "row"]
 
-    def __init__(self, name: str = None, description: str = None, data: dict = {}):
+    def __init__(self, name: str = None,data: dict = {}, description: str = None, attr_list:list[str]=[],**kw):
         self.name: str = name
         self.description: str = None
         self.db_filepath = "./omari.pkl"
 
         
-        self.get=self.__get(self)
+        #self.get=self.__get(self)
         
         for ky,val in data.items():
             self.auto_refersh = False
             self[ky]=attribute(name=ky,data=val)
+        if len(data)==0:
+            for ky in attr_list:
+                self[ky]=attribute(name=ky,data=[])
+                pass
+            
         
         self.auto_refersh = True
     
         self["__db_index__"] = attribute("__db_index__", 
-                                         data=[i for i in range(self.size()[0])],
+                                         data=list(range(self.size()[0])),
                                          Type=int)
 
+        self.__creation_date = datetime.datetime.now()
+        
+        self.__kwargs_parser__(**kw)
         pass
+    
+    def __kwargs_parser__(self,**kw):
+        for ky, val in kw.items():
+            if ky in self.__dict__:
+                self.__setattr__(ky, val)
+            else:
+                Warning(f"this attribute [{ky}] is not supported")
+        return self
+
 
     def add_attribute(self, *att: attribute):
         for a in att:
             if isinstance(a, (attribute)) and type(a) is attribute:
                 self[a.name] = a
                 #print(a)
+        return self
+    
+    def create_attribute(self,*att_name:str):
+        for name in att_name:
+            if isinstance(name,str):
+                self[name]=attribute(name, data=[])
+            else:
+                Warning(f"Bad Attribute Name Entry [name:{name}]!")
+        return self
 
     def __setitem__(self, name, value):
         if type(value) is not attribute or not isinstance(value,(list,tuple)):
             if len(self.keys())!=0:
                 print(self.keys())
-                raise print("Error")
+                raise TypeError(f"Bad Data Type {type(value)}")
         super().__setitem__(name, value)  # self[name]=value
         # db_len=[len(att) for _,att in self.items()]
         if self.auto_refersh:
@@ -353,6 +404,7 @@ class database(dict):
             for a, v in self.items():
                 v.resize(db_max_len)
             return self
+        
 
     def __getitem__(self, name):
         try:
@@ -363,6 +415,7 @@ class database(dict):
             #     return self[name]
             # else:
             #     raise print("Error 000")
+            raise TabError(f"Bad getitem or index {name}")
             pass
 
         return
@@ -372,14 +425,21 @@ class database(dict):
         if name in self.keys():
             return self[name]
         mdname = name.lower()
-        if mdname in ["columns"]:
+        if mdname in ["columns","cols"]:
             return self.columns()
         if mdname in ["iloc", "irow"]:
             return self.get
         if mdname in ["index"]:
             return self["__db_index__"]
+        if name in ["creation_date","cdate"]:
+            return self.__creation_date
+        if name in ["ncols"]:
+            return len(self.keys())
+        if name in ["nrows"]:
+            return len(self)
         else:
             return f"{name}->crap"
+        
 
     def columns(self):
         return attribute("columns", data=list(self.keys()))
@@ -410,29 +470,52 @@ class database(dict):
     def __setattr__(self, name, value):
         if name == "get" and type(value) is not self.__get:
             raise print("error")
+        if name in self:
+            self.__setitem__(name, value)
+
+            # if isinstance(value, (attribute)):
+            # else:
+            #     raise TypeError("Bad data type")
+            # #self["name"]=value
         super().__setattr__(name, value)
 
-    def import_from_file(self, filename="omari_labeel.csv",clear=True,append=False,columns:list=[]):
+    # data storing 
+    def import_from_file(self, filename="omari_labeel.csv",
+                         option:str="new",
+                         columns:list=[]):
+        clear=False
+        append=False
+        
+        if option.lower() in ["new","fresh"]:
+            clear=True
+        elif option.lower() in ["append","attach"]:
+            append=True
+        
         if clear:
+            print("clear")
             self.clear()
         with open(filename,"r") as fid:
             csv_r=csv.DictReader(fid)
             if append:
-                self.refresh_index()
                 i,_=self.size() 
             else:
                 i=0
             for c in csv_r:
                 tmp=c
                 if len(columns)!=0:
-                    #tmp={}
-                    # for cc in columns:
-                    #     tmp[cc]=c[cc]
+                    tmp={}
+                    for cc in columns:
+                        try:
+                            tmp[cc]=c[cc]
+                        except:
+                            raise TabError(f"Bad Attribute ! {cc} is not found in file {filename}")
                     pass
                 
                 self.update_row(row_id=i,data=tmp)
                 i+=1
-        return self
+            self.refresh_index()
+
+        #return self
         
         
         
@@ -491,16 +574,16 @@ class database(dict):
             #print("*"*80,a,"*"*80)
             for i,v in a.items():
                 self[i]=v
+        return self
     def update_row(self,row_id=0,data={},add_new=True):
         for c,v in data.items():
             try:
                 self[c][row_id]=v
             except:
                 if c not in self and add_new:
-                    self[c]=attribute(c,data=[v])
+                    self[c]=attribute(c,data=[v],Type=float)
                 else:
-                    return 
-                    raise "Mush 3arf shoo badi a76"
+                    raise TypeError("Mush 3arf shoo badi a76")
         return self
     
     def show_table(self):
@@ -513,9 +596,21 @@ class database(dict):
         #print(db_len)
         db_max_len = max(db_len) if len(db_len) !=0 else 0
         return db_max_len,len(self.keys())
-    def append(self,data:dict={}):
+    
+    def append(self,data:"database"):
+        same = False
+        if data is self:
+            same=True
+            l=len(self)
+#            raise TypeError("Append Same is not supported")
+            #return self
         for k,v in data.items():
-            self[k].append(v)
+            for i,d in enumerate(copy.deepcopy(v)):
+                print(k,d)
+                if same:
+                    self[k][i+l]=d
+                else:
+                    self[k].append(d)
         self.refresh_index()
         return self
     def clear(self,attr:list[str]=[]):
@@ -526,13 +621,59 @@ class database(dict):
         for a in attr_list:
             self[a].clear()
         return self
+    def clear_all(self):
+        for ky in self:
+            del self[ky]
+        return self
+    
     def __len__(self):
         db_len = [len(att) for _, att in super().items()]
         #print(db_len)
         db_max_len = max(db_len) if len(db_len) !=0 else 0
         return db_max_len
+    def __json__(self):
+        print(json)
+    # def __copy__(self):
+    #     print("copy")
+    def to_json(self):
+        with open("omari.json","w") as fid:
+            print(self.toJSON(), file=fid)
+        return self
+    
+    def read_json(self):
+        with open("omari.json","r") as fid:
+            a=json.load(fid)
+            for ky,val in dict(name="name",
+                               description="description").items():
+                setattr(self, ky, a[ky])
+            for ky,data in a["data"].items():
+                self[ky]=attribute(ky, data=data)
+                
+        
 
-if __name__=="__main__":
+    def toJSON(self):
+        def fun(o):
+            #print(o.__dict__)
+            A=dict(name=o.name,
+                   description=o.description,
+                   creation_date=str(o.creation_date))
+            
+            A["data"]={y:[zz for zz in z] for y,z in o.items()}
+            return A
+        return json.dumps(
+            fun(self),
+            #default=fun, 
+            sort_keys=True,
+            indent=4)
+    
+    def __fun__(self):
+        print("funny")
+
+def save_json(self):
+    with open("omari.json","w") as fid:
+        json.dump(self, fid)
+
+if __name__=="__main__" or True:
     A = attribute("test", data=[1, 2, 3, 4, 1, 2, 3, 2, 1, 5, 7])
     
     db = database(name="ssss")
@@ -541,3 +682,6 @@ if __name__=="__main__":
     db.auto_refersh=True
     
     c=database()
+    
+    def fun(self):
+        pass
