@@ -136,6 +136,15 @@ class Coupler(CoupledUnit, dict):
             self.cases.append(case)
         if attributes is not None:
             self.case_mappings[case.name] = attributes
+            # Ensure the child's own database has every mapped column, so
+            # update_row(add_new=False) never KeyErrors -- this matters
+            # when the same Case is shared across multiple parent
+            # Couplers with different attribute mappings.
+            case_db = getattr(case, "database", None)
+            if case_db is not None:
+                missing = [a for a in attributes if a not in case_db]
+                if missing:
+                    case_db.create_attribute(*missing)
         if max_exec is not None or check_fn is not None:
             self.set_unit_convergence(case.name, max_exec=max_exec, check_fn=check_fn)
         return self
@@ -226,14 +235,8 @@ class Coupler(CoupledUnit, dict):
         if c_step is not None:
             self.c_step = c_step
 
-        idx = self.c_step
-        if idx is None:
-            idx = 0
+        if self.c_step is None:
             self.c_step = 0
-
-        self.current_case_dir = os_ops.set_fullpath(
-            self.main_dir, self.run_case_main_dir, f"{self.run_case_sub_dir}_{idx}"
-        )
 
         self._run_once(**kwargs)
         return self
@@ -247,6 +250,18 @@ class Coupler(CoupledUnit, dict):
         step. Used both directly and as the repeated pass inside
         `run_to_convergence()` for overall coupling convergence.
         """
+        idx = self.c_step
+        # `_attempt` (set by run_to_convergence's repeated passes) keeps
+        # repeated overall-coupling-convergence passes over the same
+        # c_step from overwriting each other's run directory on disk.
+        attempt = kwargs.pop("_attempt", 0) or 0
+        dir_name = (
+            f"{self.run_case_sub_dir}_{idx}"
+            if not attempt
+            else f"{self.run_case_sub_dir}_{idx}_iter{attempt}"
+        )
+        self.current_case_dir = os_ops.set_fullpath(self.main_dir, self.run_case_main_dir, dir_name)
+
         for case in self.cases:
             self.case_name = case.name
             case.set_vars(root_dir=self.current_case_dir)
@@ -257,6 +272,14 @@ class Coupler(CoupledUnit, dict):
                 mapped_atts = self.case_mappings.get(case.name)
                 if mapped_atts is not None:
                     row_data = {k: v for k, v in row_data.items() if k in mapped_atts}
+                # Belt-and-suspenders: a Case's database can be (re)assigned
+                # after add_case(), or the same Case instance can be shared
+                # under multiple parent Couplers with different attribute
+                # mappings -- provision any still-missing mapped columns
+                # here rather than letting update_row KeyError.
+                missing = [k for k in row_data if k not in case.database]
+                if missing:
+                    case.database.create_attribute(*missing)
                 case.database.update_row(row_id=0, data=row_data, add_new=False)
 
             case.run_to_convergence(

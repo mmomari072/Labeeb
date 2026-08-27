@@ -235,9 +235,18 @@ class Case(CoupledUnit):
         if self.database is None:
             raise CaseExecutionError("Cannot launch case without registering a database")
 
-        self.current_case_dir = os_ops.set_fullpath(
-            self.main_dir, self.run_case_main_dir, f"{self.run_case_sub_dir}_{idx}"
+        # `_attempt` (set by run_to_convergence's repeated passes) keeps
+        # repeated self-convergence executions of the same case_id from
+        # overwriting each other's run directory. The first attempt (0 or
+        # unset, i.e. the normal non-convergence path) keeps today's
+        # unsuffixed naming.
+        attempt = kwargs.pop("_attempt", 0) or 0
+        dir_name = (
+            f"{self.run_case_sub_dir}_{idx}"
+            if not attempt
+            else f"{self.run_case_sub_dir}_{idx}_iter{attempt}"
         )
+        self.current_case_dir = os_ops.set_fullpath(self.main_dir, self.run_case_main_dir, dir_name)
 
         for f in self.pre_functions:
             f(self, **kwargs)

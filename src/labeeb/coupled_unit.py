@@ -86,7 +86,10 @@ class CoupledUnit:
         unit_name = getattr(self, "name", self.__class__.__name__)
 
         for i in range(n):
-            self._run_once(**kwargs)
+            # `_attempt` lets a subclass distinguish repeated passes over
+            # the same case_id/c_step on disk (e.g. run directory naming)
+            # without changing behavior on the first, non-repeated pass.
+            self._run_once(_attempt=i, **kwargs)
 
             converged = True if check_fn is None else bool(check_fn(self, **kwargs))
             if converged:

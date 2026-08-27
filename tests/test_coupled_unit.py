@@ -137,6 +137,74 @@ def test_coupler_runs_coupling_functions_once_per_pass_not_per_case():
         os.chdir(orig_cwd)
 
 
+def test_case_self_convergence_uses_distinct_run_dirs_per_attempt():
+    orig_cwd = os.getcwd()
+    try:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            template_path = os.path.join(tmpdir, "t.txt")
+            with open(template_path, "w") as fid:
+                fid.write("RHO = #RHO#\n")
+
+            c = Case(name="repeat_case", output_files={})
+            c.database = Database(data={"RHO": [1.0]})
+            c.add_file(File(file_path=template_path))
+            c.FlagsMap = {"#RHO#": "RHO"}
+            c.main_dir = tmpdir
+            c.run_case_main_dir = "runs"
+            c.run_case_sub_dir = "case"
+            c.exe_cmd = []
+            c.run_type = "new"
+            c.case_id = 0
+
+            seen_dirs = []
+            c.add_post_functions(lambda unit, **kw: seen_dirs.append(unit.current_case_dir))
+
+            c.run_to_convergence(max_exec=3, check_fn=lambda unit, **kw: len(seen_dirs) >= 3)
+
+            assert len(set(seen_dirs)) == 3, "each convergence attempt must use a distinct run directory"
+            assert seen_dirs[0] == os.path.join(tmpdir, "runs", "case_0")
+            assert seen_dirs[1] == os.path.join(tmpdir, "runs", "case_0_iter1")
+            assert seen_dirs[2] == os.path.join(tmpdir, "runs", "case_0_iter2")
+    finally:
+        os.chdir(orig_cwd)
+
+
+def test_shared_case_under_two_parents_with_divergent_mappings():
+    orig_cwd = os.getcwd()
+    try:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            in1 = os.path.join(tmpdir, "in1.txt")
+            with open(in1, "w") as f:
+                f.write("RHO = #RHO#\n")
+
+            # A single Case shared under two different parent Couplers,
+            # each mapping a different attribute set into it.
+            shared_case = Case(name="shared", output_files={})
+            shared_case.database = Database(data={"RHO": [None]})
+            shared_case.add_file(File(file_path=in1))
+            shared_case.FlagsMap = {"#RHO#": "RHO"}
+
+            parent_a = Coupler(name="parent_a")
+            parent_a.main_dir = tmpdir
+            parent_a.add_case(shared_case, attributes=["RHO"])
+            parent_a.database = Database(data={"RHO": [1.1]})
+
+            parent_b = Coupler(name="parent_b")
+            parent_b.main_dir = tmpdir
+            # parent_b maps an attribute the shared case's own database
+            # never had -- must not KeyError.
+            parent_b.add_case(shared_case, attributes=["RHO", "WF"])
+            parent_b.database = Database(data={"RHO": [2.2], "WF": [0.5]})
+
+            parent_a.launch_case(c_step=0)
+            parent_b.launch_case(c_step=0)
+
+            assert shared_case.database["RHO"][0] == 2.2
+            assert shared_case.database["WF"][0] == 0.5
+    finally:
+        os.chdir(orig_cwd)
+
+
 def test_coupler_per_unit_max_exec_runs_case_multiple_times():
     orig_cwd = os.getcwd()
     try:
