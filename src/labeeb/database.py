@@ -321,8 +321,16 @@ class Attribute(list):
     def resize(self, new_length: int) -> "Attribute":
         """Resize the attribute list, padding with non_entered_datum_value or trimming."""
         if len(self) < new_length:
+            logger.warning(
+                f"Attribute '{self.name}' auto-padded from {len(self)} to {new_length} rows "
+                f"with non_entered_datum_value={self.non_entered_datum_value!r}. "
+                "This usually means another column in the Database has more rows than this one."
+            )
             self[new_length - 1] = self.non_entered_datum_value
         elif len(self) > new_length:
+            logger.warning(
+                f"Attribute '{self.name}' auto-trimmed from {len(self)} to {new_length} rows."
+            )
             while len(self) > new_length:
                 self.pop()
         return self

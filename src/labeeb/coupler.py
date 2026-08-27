@@ -87,6 +87,7 @@ class Coupler(dict):
 
         self.c_step: Optional[int] = None
         self.case_name: Optional[str] = None
+        self.max_steps: Optional[int] = None
 
         self._accessor = self.CaseAccessor(self)
         self._parse_kwargs(**kwargs)
@@ -158,10 +159,11 @@ class Coupler(dict):
                 break
 
             self.c_step = i
-            # Cap iteration steps if requested to prevent infinite loops during dev
-            if i > 20:
-                logger.warning("Coupler simulation reached max iteration step guard (20)")
-                continue
+            if self.max_steps is not None and i >= self.max_steps:
+                logger.warning(
+                    f"Coupler '{self.name}' reached max_steps guard ({self.max_steps}); stopping."
+                )
+                break
 
             self.launch_case(**kwargs)
         return self
