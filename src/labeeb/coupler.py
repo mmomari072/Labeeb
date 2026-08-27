@@ -6,9 +6,10 @@ in an iterative loop, utilizing database parameters and user-defined coupling fu
 import copy
 import logging
 import os
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Union
 
 from .case import Case
+from .coupled_unit import CoupledUnit
 from .database import Database
 from .exceptions import CouplingError
 from .utils import os_ops, progress
@@ -16,9 +17,13 @@ from .utils import os_ops, progress
 logger = logging.getLogger(__name__)
 
 
-class Coupler(dict):
+class Coupler(CoupledUnit, dict):
     """
     Coordinates and launches multiple simulation cases in a coupled workflow.
+
+    A `Coupler` is itself a `CoupledUnit`, so it can be nested as a child
+    unit inside another `Coupler` (sub-coupling), alongside plain `Case`
+    children -- both are composed uniformly via `add_case`/`add_cases`.
     """
 
     class CaseAccessor:
@@ -66,14 +71,17 @@ class Coupler(dict):
         Args:
             name: Coupler run identifier.
         """
-        super().__init__()
+        dict.__init__(self)
+        CoupledUnit.__init__(self)
         self.name: str = name
         self.description: Optional[str] = None
         self.database: Optional[Database] = None
 
-        self.cases: List[Case] = []
+        self.cases: List[Any] = []
         self.case_mappings: Dict[str, List[str]] = {}
         self._coupling_functions: List[Callable[..., Any]] = []
+        self._unit_max_exec: Dict[str, int] = {}
+        self._unit_check_fn: Dict[str, Callable[..., bool]] = {}
 
         self.main_dir: str = os.getcwd()
         self.run_case_main_dir: str = "coupling_omari_test"
@@ -106,9 +114,21 @@ class Coupler(dict):
             else:
                 logger.warning(f"Coupler parameter '{key}' is not supported")
 
-    def add_case(self, case: Case, attributes: Optional[List[str]] = None) -> "Coupler":
+    def add_case(
+        self,
+        case: "Union[Case, Coupler]",
+        attributes: Optional[List[str]] = None,
+        max_exec: Optional[int] = None,
+        check_fn: Optional[Callable[..., bool]] = None,
+    ) -> "Coupler":
         """
-        Register a single Case, optionally specifying which attributes to copy.
+        Register a single unit (a `Case`, or another `Coupler` for
+        sub-coupling), optionally specifying which attributes to copy.
+
+        `max_exec`/`check_fn` set this unit's own convergence budget
+        (how many times it may re-execute before moving to the next unit
+        in a coupling step) and can be changed later via
+        `set_unit_convergence()` between coupling steps.
         """
         if case not in self.cases:
             if case.name in [c.name for c in self.cases]:
@@ -116,22 +136,37 @@ class Coupler(dict):
             self.cases.append(case)
         if attributes is not None:
             self.case_mappings[case.name] = attributes
+        if max_exec is not None or check_fn is not None:
+            self.set_unit_convergence(case.name, max_exec=max_exec, check_fn=check_fn)
         return self
 
     def add_cases(self, *args: Any, **kwargs: Any) -> "Coupler":
         """
-        Register multiple cases.
+        Register multiple units.
         Supports either:
-          - Multiple Case instances: add_cases(case1, case2)
-          - A single dictionary mapping Case -> attribute list: add_cases({case1: ['RHO'], case2: []})
+          - Multiple Case/Coupler instances: add_cases(case1, case2)
+          - A single dictionary mapping unit -> attribute list: add_cases({case1: ['RHO'], case2: []})
         """
         if len(args) == 1 and isinstance(args[0], dict):
             for case, attributes in args[0].items():
                 self.add_case(case, attributes)
         else:
             for c in args:
-                if isinstance(c, Case):
+                if isinstance(c, CoupledUnit):
                     self.add_case(c)
+        return self
+
+    def set_unit_convergence(
+        self,
+        name: str,
+        max_exec: Optional[int] = None,
+        check_fn: Optional[Callable[..., bool]] = None,
+    ) -> "Coupler":
+        """Set or update a registered unit's convergence budget/check, keyed by name."""
+        if max_exec is not None:
+            self._unit_max_exec[name] = max_exec
+        if check_fn is not None:
+            self._unit_check_fn[name] = check_fn
         return self
 
     def add_coupling_functions(self, *funcs: Callable[..., Any]) -> "Coupler":
@@ -200,22 +235,41 @@ class Coupler(dict):
             self.main_dir, self.run_case_main_dir, f"{self.run_case_sub_dir}_{idx}"
         )
 
+        self._run_once(**kwargs)
+        return self
+
+    def _run_once(self, **kwargs: Any) -> None:
+        """
+        One pass of a coupling step: run every registered unit to its own
+        convergence (in order), then run coupling functions ONCE after all
+        units have resolved -- not per-unit -- so feedback (e.g. updating
+        shared parameters) always sees every unit's final state for this
+        step. Used both directly and as the repeated pass inside
+        `run_to_convergence()` for overall coupling convergence.
+        """
         for case in self.cases:
             self.case_name = case.name
             case.set_vars(root_dir=self.current_case_dir)
 
-            # Update the case database row with the coupler's current database row parameters
+            # Update the unit's database row with the coupler's current database row parameters
             if self.database and case.database:
-                row_data = self.database.get_row(idx)
+                row_data = self.database.get_row(self.c_step)
                 mapped_atts = self.case_mappings.get(case.name)
                 if mapped_atts is not None:
                     row_data = {k: v for k, v in row_data.items() if k in mapped_atts}
                 case.database.update_row(row_id=0, data=row_data, add_new=False)
 
-            case.launch(indent=1, **kwargs)
-            self._execute_coupling_functions(**kwargs)
+            case.run_to_convergence(
+                max_exec=self._unit_max_exec.get(case.name),
+                check_fn=self._unit_check_fn.get(case.name),
+                indent=1,
+                **kwargs,
+            )
 
-        return self
+        # Coupling functions run once per pass, after every unit has
+        # reached its own convergence (or exhausted its max_exec) --
+        # see CoupledUnit's parent/child convergence invariant.
+        self._execute_coupling_functions(**kwargs)
 
     def _shall_stop(self) -> bool:
         return False

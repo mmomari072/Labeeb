@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Optional, Union
 
 import pandas as pd
 
+from .coupled_unit import CoupledUnit
 from .database import Attribute, Database
 from .exceptions import CaseExecutionError
 from .utils import file_io, os_ops, progress
@@ -129,7 +130,7 @@ class FlagsMap:
         return {f_name: f_obj.get_value() for f_name, f_obj in self._flags.items()}
 
 
-class Case:
+class Case(CoupledUnit):
     """
     Main manager for simulating sensitivity analysis cases.
     Pads files with mapped replacement flags, launches runs in separate subdirectories, and parses output files.
@@ -143,6 +144,7 @@ class Case:
             name: Case runner name.
             output_files: Dictionary mapping output filenames to lists of column names to parse.
         """
+        super().__init__()
         self.name: str = name
         self.database: Optional[Database] = None
         self.attributes: List[str] = []
@@ -237,6 +239,9 @@ class Case:
             self.main_dir, self.run_case_main_dir, f"{self.run_case_sub_dir}_{idx}"
         )
 
+        for f in self.pre_functions:
+            f(self, **kwargs)
+
         if self.new:
             os_ops.mkdir(self.current_case_dir)
 
@@ -263,11 +268,15 @@ class Case:
         # Parse outputs
         self._read_outputs()
 
-        # Execute hook functions
-        self._execute_post_execution_functions()
+        for f in self.post_functions:
+            f(self, **kwargs)
 
         timer.toc()
         return self
+
+    def _run_once(self, **kwargs: Any) -> None:
+        """Single execution pass, used by `run_to_convergence()`."""
+        self.launch_case(**kwargs)
 
     def create_case_main_dir(self) -> "Case":
         """Helper to call initialization."""
@@ -423,9 +432,6 @@ class Case:
                 logger.error(f"Failed to read output file {fullname}: {e}")
                 raise CaseExecutionError(f"Failed to read simulation output from '{fullname}': {e}") from e
         return self
-
-    def _execute_post_execution_functions(self) -> None:
-        pass
 
     def _parse_kwargs(self, **kwargs: Any) -> None:
         for key, val in kwargs.items():
