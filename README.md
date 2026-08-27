@@ -19,6 +19,9 @@ graph TD
     B -->|Launches subdirectories| E[Simulators / Executables]
     E -->|Extracts outputs| B
     B -->|Feeds back| F[Coupler Kernel]
+    G[CoupledUnit] -.->|run_to_convergence, pre/post hooks| B
+    G -.->|run_to_convergence, per-child budgets| F
+    F -->|composes| F
 ```
 
 ---
@@ -151,7 +154,7 @@ coupler.database = Database(data={
 })
 
 # Define iteration callbacks
-def callback(self):
+def callback(self, **kwargs):
     print(f"Iter step {self.c_step}: case {self.case_name} run complete.")
 
 coupler.add_coupling_functions(callback)
@@ -160,7 +163,55 @@ coupler.add_coupling_functions(callback)
 coupler.launch()
 ```
 
-### E. Exception Handling (`labeeb.exceptions`)
+### E. Convergence-Driven Execution (`labeeb.coupled_unit`)
+`Case` and `Coupler` both inherit `CoupledUnit`, which adds a convergence
+loop on top of a single execution pass: `run_to_convergence()` repeats
+`launch_case()` (for a `Case`) or a full coupling step (for a `Coupler`)
+until a `check_fn` you supply returns `True`, or `max_exec` attempts are
+used. Each unit also carries ordered `pre_functions`/`post_functions`
+lists, run around every pass -- useful for pulling in the latest state
+before a run, or parsing/validating results right after one.
+
+```python
+from labeeb.case import Case
+from labeeb.database import Database
+
+case = Case(name="mcnp")
+case.database = Database(data={"RHO": [19.0]})
+# ... FlagsMap / input files / exe_cmd as above ...
+
+def refresh_flags(unit, **kwargs):
+    print(f"Starting attempt for {unit.name}")
+
+def check_keff_converged(unit, **kwargs):
+    keff = unit.outputs["keff"][-1][-1]
+    return abs(keff - 1.0) < 1e-4
+
+case.add_pre_functions(refresh_flags)
+
+result = case.run_to_convergence(max_exec=10, check_fn=check_keff_converged)
+print(result.converged, result.executions)  # ConvergenceResult
+```
+
+A `Coupler` composes over both `Case` and `Coupler` children uniformly --
+a `Coupler` can itself be a child of another `Coupler` for sub-coupling.
+Each child's own convergence budget (`max_exec`/`check_fn`) is set at
+`add_case()` time and can be changed between coupling steps:
+
+```python
+coupler.add_case(mcnp_case, attributes=["RHO"], max_exec=5, check_fn=check_keff_converged)
+coupler.set_unit_convergence("mcnp", max_exec=8)  # retune mid-run
+
+# One coupling step: every child runs to ITS OWN convergence (in order),
+# then coupling functions fire exactly once -- after all children have
+# resolved, not per-child -- so feedback sees every unit's final state.
+coupler.launch_case(c_step=0)
+
+# Or drive the whole coupled system to convergence:
+result = coupler.run_to_convergence(max_exec=20, check_fn=overall_check_fn)
+```
+
+### F. Exception Handling (`labeeb.exceptions`)
 Labeeb raises clean, module-specific exceptions to help you identify failures programmatically:
 *   `LabeebError`: Base exception class.
 *   `DatabaseError`: Issues with Attribute dimensions, operations, or imports.
