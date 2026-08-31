@@ -56,6 +56,11 @@ secret redaction, JSON logging, and concurrent-safe JSONL appends.
   unavailable analysis client cannot pause or fail the campaign.
 - [ ] Support headless execution, bounded buffering, redacted data sharing, and
   tests proving execution results are identical with plotting enabled or off.
+- [ ] Define a provider-neutral `EventPublisher` API: implement durable JSONL
+  publishing first, then optional WebSocket delivery for browser dashboards and
+  Redis Streams for distributed/replayable consumers.
+- [ ] Treat raw sockets as an internal transport only if needed; do not use
+  Memcached as the event channel because it is volatile and not replayable.
 
 ---
 
