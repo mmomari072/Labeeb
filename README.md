@@ -151,6 +151,8 @@ shell commands with an explicit case directory, timeout, optional log file,
 and normalized `ExecutionResult`. It logs command start, working directory,
 completion/exit code, duration, timeout, and launch errors through the
 `labeeb.execution` logger. Scheduler backends can implement the same interface.
+Each run also exposes a typed `ExecutionEvent`; use
+`export_execution_events()` to persist an auditable JSON event stream.
 
 ```python
 from labeeb.case import Case

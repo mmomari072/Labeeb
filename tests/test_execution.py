@@ -4,7 +4,7 @@ from pathlib import Path
 
 from labeeb.case import Case
 from labeeb.database import Database
-from labeeb.execution import ExecutionResult, LocalExecutionBackend
+from labeeb.execution import ExecutionResult, LocalExecutionBackend, export_execution_events
 from labeeb.logging_config import CaseLoggerAdapter
 
 
@@ -48,6 +48,18 @@ def test_local_execution_backend_preserves_case_context(tmp_path, caplog):
     assert record.attempt == 1
 
 
+def test_execution_result_contains_typed_event_and_can_export_json(tmp_path):
+    result = LocalExecutionBackend().run("printf done", cwd=tmp_path)
+
+    assert result.event is not None
+    assert result.event.status == "SUCCESS"
+    assert result.event.command == "printf done"
+    assert result.event.stdout_bytes == len("done")
+    output = export_execution_events([result.event], tmp_path / "events.json")
+    assert output[0]["status"] == "SUCCESS"
+    assert '"stdout_bytes": 4' in (tmp_path / "events.json").read_text(encoding="utf-8")
+
+
 def test_case_accepts_injected_execution_backend(tmp_path):
     class RecordingBackend:
         def __init__(self):
@@ -70,3 +82,20 @@ def test_case_accepts_injected_execution_backend(tmp_path):
 
     assert backend.commands[0][0] == "custom simulator"
     assert backend.commands[0][1].endswith("runs/case_0")
+
+
+def test_case_history_contains_execution_event_fields(tmp_path):
+    case = Case(name="event_case", output_files={})
+    case.database = Database(data={"RHO": [19.0]})
+    case.main_dir = str(tmp_path)
+    case.run_case_main_dir = "runs"
+    case.run_type = "new"
+    case.exe_cmd = ["printf done"]
+
+    case.launch()
+
+    entry = case.execution_history[0]
+    assert entry["status"] == "SUCCESS"
+    assert entry["command"] == "printf done"
+    assert entry["stdout_bytes"] == 4
+    assert entry["case_id"] == 0

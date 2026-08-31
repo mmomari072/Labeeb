@@ -23,6 +23,9 @@ Logging API progress: v1.1 adds application-owned configuration, rotating file
 handlers, and contextual command records; CLI verbosity flags remain secondary
 follow-up work.
 
+v1.3 adds typed `ExecutionEvent` records and JSON event export for API-driven
+case-study auditing.
+
 ---
 
 ## 0. Release-Blocking Reliability Work

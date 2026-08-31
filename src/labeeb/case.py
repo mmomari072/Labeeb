@@ -507,6 +507,9 @@ class Case(CoupledUnit):
                     "timestamp": t_stamp,
                     "duration_seconds": round(result.duration_seconds or t_duration, 3)
                 })
+                if result.event is not None:
+                    self.execution_history[-1].update(result.event.to_dict())
+                    self.execution_history[-1]["execution_event"] = result.event.to_dict()
 
                 if code != 0:
                     logger.error(f"Simulation command returned exit status {status_str} ({code}) for command '{cmd}'")
