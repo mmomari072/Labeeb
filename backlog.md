@@ -8,7 +8,8 @@ This document tracks the ongoing development roadmap, completed features, and up
 |---|---|---|---|
 | **v0.2.2** | Reliability: BL-001 through BL-005 | Full suite green, compatibility CI, no silent failures/skips, committed and pushed | Released |
 | **v0.3.0** | Campaign foundation: PF-001 through PF-006 | Manifest-to-results end-to-end campaign, resume/retry evidence, local backend and CLI documented | Released |
-| **v0.4.0** | UQ and reporting: PF-007 through PF-009 | Seeded sampling, sensitivity validation, reproducible HTML/PDF report example | Planned |
+| **v0.4.0** | API-first case studies and DOE foundation: PF-007 | Python Campaign runner, resumable case studies, seeded LHS and Halton designs | Implemented; release gate pending |
+| **v0.5.0** | UQ and reporting: PF-008 through PF-009 | Sensitivity validation, tolerance limits, reproducible HTML/PDF report example | Planned |
 | **v1.0.0** | Stable production API | Compatibility freeze, migration policy, local/HPC workflow acceptance, tagged release | Planned |
 
 Release status is evidence-based: an item is **implemented**, **tested**, **verified**, and **committed/pushed** separately. A release is not complete until all four states are recorded.
@@ -76,10 +77,11 @@ Implement these after the release blockers to make Labeeb suitable for repeatabl
 
 ## 2. Advanced Sampling & Uncertainty Quantification (UQ)
 
-- [ ] **PF-007 — Design-of-experiments & stochastic sampling**
-  - Seeded Latin Hypercube Sampling (LHS) and Sobol/Halton low-discrepancy sequences.
+- [x] **PF-007 — Design-of-experiments & stochastic sampling**
+  - Seeded Latin Hypercube Sampling (LHS) and Halton low-discrepancy sequences.
   - Joint distributions and Gaussian copulas for correlated physical parameters (e.g. coolant density and temperature).
   - Bounded and truncated distributions (e.g. truncated normal, Weibull, log-normal).
+  - Completed foundation: added the Python `Campaign` runner plus reproducible LHS and Halton APIs; correlated and specialized distributions remain v0.5 work.
 - [ ] **PF-008 — Sensitivity & statistical analysis**
   - Global Sensitivity Analysis (GSA): Pearson/Spearman correlation coefficients, Morris screening method, and Sobol sensitivity indices ($S_i$, $S_{Ti}$).
   - Non-parametric tolerance limit calculator (**Wilks' formula**) for nuclear safety margins (e.g. 95/95 one-sided and two-sided criteria).

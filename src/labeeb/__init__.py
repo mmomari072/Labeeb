@@ -4,7 +4,7 @@ Developed for nuclear reactor code coupling and sensitivity analysis (MCNP, RELA
 """
 
 from .case import Case, Flag, FlagsMap
-from .campaign import CampaignError, CampaignManifest, load_manifest
+from .campaign import Campaign, CampaignError, CampaignManifest, load_manifest
 from .coupler import Coupler
 from .database import Attribute, Database
 from .exceptions import (
@@ -19,6 +19,8 @@ from .extractors import ExtractionError, extract_csv, extract_json, extract_rege
 from .sampler import (
     DiscreteSampling,
     FOATConstructor,
+    halton_sample,
+    latin_hypercube_sample,
     normal_sample,
     sample,
     uniform_sample,
@@ -26,7 +28,7 @@ from .sampler import (
 from .results import CaseResult, CampaignStateStore, export_case_results
 from .utils.file_io import File
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 __author__ = "Mohammed Omari"
 
 # Print nice banner on import

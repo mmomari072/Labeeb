@@ -41,6 +41,20 @@ class CaseResult:
             "failure": self.failure,
         }
 
+    @classmethod
+    def from_record(cls, record: Dict[str, Any]) -> "CaseResult":
+        """Rebuild a result from a persisted or exported record."""
+        return cls(
+            case_id=int(record["case_id"]),
+            parameters=dict(record.get("parameters", {})),
+            status=str(record["status"]),
+            exit_code=record.get("exit_code"),
+            duration_seconds=record.get("duration_seconds"),
+            artifacts=dict(record.get("artifacts", {})),
+            metrics=dict(record.get("metrics", {})),
+            failure=record.get("failure"),
+        )
+
 
 class CampaignStateStore:
     """SQLite persistence for resumable case attempts and input-hash caching."""

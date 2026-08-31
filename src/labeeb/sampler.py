@@ -40,6 +40,53 @@ def normal_sample(mean: float, std: float, size: int = 1) -> np.ndarray:
     return np.random.normal(mean, std, size)
 
 
+def latin_hypercube_sample(
+    bounds: List[Any], size: int, seed: Optional[int] = None, rng: Optional[Any] = None
+) -> np.ndarray:
+    """Generate a reproducible Latin-hypercube design over ``(low, high)`` bounds."""
+    if size < 1 or not bounds:
+        raise SamplingError("Latin-hypercube size and bounds must be non-empty")
+    if any(len(bound) != 2 or float(bound[0]) > float(bound[1]) for bound in bounds):
+        raise SamplingError("Each Latin-hypercube bound must be an ordered (low, high) pair")
+    generator = rng if rng is not None else np.random.default_rng(seed)
+    design = np.empty((size, len(bounds)), dtype=float)
+    for column, (low, high) in enumerate(bounds):
+        strata = (np.arange(size) + generator.random(size)) / size
+        generator.shuffle(strata)
+        design[:, column] = float(low) + strata * (float(high) - float(low))
+    return design
+
+
+def halton_sample(size: int, dimensions: int, skip: int = 0) -> np.ndarray:
+    """Generate a dependency-free Halton low-discrepancy design in ``[0, 1)``."""
+    if size < 1 or dimensions < 1 or skip < 0:
+        raise SamplingError("Halton size and dimensions must be positive; skip cannot be negative")
+
+    def primes(count: int) -> List[int]:
+        found: List[int] = []
+        candidate = 2
+        while len(found) < count:
+            if all(candidate % prime for prime in found):
+                found.append(candidate)
+            candidate += 1
+        return found
+
+    def van_der_corput(index: int, base: int) -> float:
+        value = 0.0
+        denominator = 1.0
+        while index:
+            index, remainder = divmod(index, base)
+            denominator *= base
+            value += remainder / denominator
+        return value
+
+    bases = primes(dimensions)
+    return np.array(
+        [[van_der_corput(row + skip + 1, base) for base in bases] for row in range(size)],
+        dtype=float,
+    )
+
+
 def sample(size: int = 0) -> List[int]:
     """
     Generate a list of integers from 0 to size-1.

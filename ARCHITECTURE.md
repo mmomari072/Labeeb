@@ -46,6 +46,7 @@ flowchart TD
 ### 2.0 Campaign Manifest Subsystem (`labeeb.campaign`)
 * **Validated Configuration**: `CampaignManifest` loads JSON/YAML campaign definitions with parameters, templates, commands, seed, and execution settings.
 * **Provenance**: `provenance()` produces deterministic manifest and template SHA-256 hashes plus executable discovery metadata without coupling configuration loading to a specific execution backend.
+* **Python Runner**: `Campaign` builds a configured `Case`, executes rows, returns `CaseResult` records, and uses `CampaignStateStore` for hash-aware resume/retry behavior. The CLI delegates to this API.
 
 ### 2.1 Results Subsystem (`labeeb.results`)
 * **Case Records**: `CaseResult` stores parameters, status, exit code, duration, artifacts, metrics, and failure details for each case.
@@ -56,7 +57,10 @@ flowchart TD
 * **Backend Contract**: `ExecutionBackend.run()` separates command execution from `Case` orchestration.
 * **Local Backend**: `LocalExecutionBackend` provides cwd, timeout, logging, and normalized `ExecutionResult` behavior; scheduler and container implementations can be added without changing `Case`.
 
-### 2.3 CLI Subsystem (`labeeb.cli`)
+### 2.3 Design Subsystem (`labeeb.sampler`)
+* **Reproducible DOE**: `latin_hypercube_sample()` accepts physical bounds and a seed or generator; `halton_sample()` provides dependency-free low-discrepancy points.
+
+### 2.4 CLI Subsystem (`labeeb.cli`)
 * **Configuration Workflow**: `validate`, `run`, `status`, and `resume` expose manifest-driven local campaigns and persisted state without coupling the command parser to future scheduler backends.
 
 ### 2.1 Database Subsystem (`labeeb.database`)

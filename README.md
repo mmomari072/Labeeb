@@ -101,6 +101,28 @@ campaign = load_manifest("campaign.yml")
 print(campaign.provenance()["manifest_sha256"])
 ```
 
+For Python-authored case studies, use the `Campaign` API directly. It builds
+the existing `Case` runner, executes each parameter row, and returns structured
+results; SQLite state enables safe reruns without making the CLI part of the
+case-study design.
+
+```python
+from labeeb import Campaign
+
+campaign = Campaign.from_manifest("campaign.yml", state_path="state.sqlite")
+results = campaign.run()
+assert all(result.status == "SUCCESS" for result in results)
+```
+
+Designs can also be generated inside the same Python file:
+
+```python
+from labeeb import halton_sample, latin_hypercube_sample
+
+lhs = latin_hypercube_sample([(0.0, 1.0), (280.0, 340.0)], 100, seed=42)
+low_discrepancy = halton_sample(100, dimensions=2)
+```
+
 ### B2. Structured Results (`labeeb.results`)
 `CaseResult` retains parameters, execution status, exit code, duration, artifacts,
 metrics, and failure details for every case, including failed cases.
