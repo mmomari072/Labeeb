@@ -7,7 +7,7 @@ This document tracks the ongoing development roadmap, completed features, and up
 | Release | Milestone scope | Release gate | Status |
 |---|---|---|---|
 | **v0.2.2** | Reliability: BL-001 through BL-005 | Full suite green, compatibility CI, no silent failures/skips, committed and pushed | In progress |
-| **v0.3.0** | Campaign foundation: PF-001 through PF-006 | Manifest-to-results end-to-end campaign, resume/retry evidence, local backend and CLI documented | Planned |
+| **v0.3.0** | Campaign foundation: PF-001 through PF-006 | Manifest-to-results end-to-end campaign, resume/retry evidence, local backend and CLI documented | In progress |
 | **v0.4.0** | UQ and reporting: PF-007 through PF-009 | Seeded sampling, sensitivity validation, reproducible HTML/PDF report example | Planned |
 | **v1.0.0** | Stable production API | Compatibility freeze, migration policy, local/HPC workflow acceptance, tagged release | Planned |
 
@@ -48,9 +48,10 @@ These items were identified during the August 2026 API review. They must be comp
 
 Implement these after the release blockers to make Labeeb suitable for repeatable local and HPC simulation studies.
 
-- [ ] **PF-001 — Campaign manifests and provenance**
+- [x] **PF-001 — Campaign manifests and provenance**
   - Define campaigns in validated YAML or JSON, including parameter space, templates, commands, random seed, and execution settings.
   - Record input-deck hashes, executable/environment metadata, package version, and timestamps for every case.
+  - Completed: added validated JSON/YAML `CampaignManifest`, deterministic manifest/template hashes, executable discovery metadata, and regression tests.
 - [ ] **PF-002 — Structured, case-indexed results**
   - Introduce a `CaseResult` model containing parameters, status, exit code, duration, artifact paths, parsed metrics, and failure details.
   - Export a single case-indexed result table; retain failure records alongside successful results.

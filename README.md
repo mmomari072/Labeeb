@@ -89,6 +89,18 @@ fuel_types = sampler.get_random_sample(n=100)
 stats = sampler.stat(m=1000)
 ```
 
+### B1. Campaign Manifests (`labeeb.campaign`)
+Validated JSON and YAML manifests capture a campaign's parameter space, input
+templates, commands, seed, and execution settings. Provenance records stable
+manifest/template hashes and executable discovery metadata.
+
+```python
+from labeeb.campaign import load_manifest
+
+campaign = load_manifest("campaign.yml")
+print(campaign.provenance()["manifest_sha256"])
+```
+
 ### C. Case Launcher & Templates (`labeeb.case` & `labeeb.utils.file_io`)
 Define templates, render inputs, execute runs, and parse output tables. Labeeb supports two template rendering options:
 

@@ -21,6 +21,7 @@ dependencies = [
     "numpy>=1.18.0",
     "openpyxl>=3.0.0",
     "pyarrow>=10.0.0",
+    "pyyaml>=6.0",
 ]
 
 [project.optional-dependencies]

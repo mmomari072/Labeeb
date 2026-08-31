@@ -4,6 +4,7 @@ Developed for nuclear reactor code coupling and sensitivity analysis (MCNP, RELA
 """
 
 from .case import Case, Flag, FlagsMap
+from .campaign import CampaignError, CampaignManifest, load_manifest
 from .coupler import Coupler
 from .database import Attribute, Database
 from .exceptions import (
