@@ -204,10 +204,10 @@ class Coupler(CoupledUnit, dict):
 
             self.c_step = i
             if self.max_steps is not None and i >= self.max_steps:
-                logger.warning(
-                    f"Coupler '{self.name}' reached max_steps guard ({self.max_steps}); stopping."
+                raise CouplingError(
+                    f"Coupler '{self.name}' max_steps={self.max_steps} would omit "
+                    f"database rows (total: {len(self.database)})"
                 )
-                break
 
             self.launch_case(**kwargs)
         return self
@@ -265,11 +265,11 @@ class Coupler(CoupledUnit, dict):
         for case in self.cases:
             self.case_name = case.name
             case.set_vars(root_dir=self.current_case_dir)
+            mapped_atts = self.case_mappings.get(case.name)
 
             # Update the unit's database row with the coupler's current database row parameters
             if self.database and case.database:
                 row_data = self.database.get_row(self.c_step)
-                mapped_atts = self.case_mappings.get(case.name)
                 if mapped_atts is not None:
                     row_data = {k: v for k, v in row_data.items() if k in mapped_atts}
                 # Belt-and-suspenders: a Case's database can be (re)assigned
@@ -286,6 +286,7 @@ class Coupler(CoupledUnit, dict):
                 max_exec=self._unit_max_exec.get(case.name),
                 check_fn=self._unit_check_fn.get(case.name),
                 indent=1,
+                _active_flag_attributes=mapped_atts,
                 **kwargs,
             )
 

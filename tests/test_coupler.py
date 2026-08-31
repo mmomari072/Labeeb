@@ -1,8 +1,10 @@
 import os
 import tempfile
+import pytest
 from labeeb.case import Case
 from labeeb.coupler import Coupler
 from labeeb.database import Database
+from labeeb.exceptions import CouplingError
 from labeeb.utils.file_io import File
 
 
@@ -58,3 +60,36 @@ def test_coupler_mapping_behavior():
         # Check case2: RHO and OMARI were mapped, so they should be updated
         assert case2.database["RHO"][0] == 1.1
         assert case2.database["OMARI"][0] == 100.0
+
+
+def test_coupler_launch_processes_all_22_database_rows():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        case = Case(name="all_rows", output_files={})
+        case.database = Database(data={"RHO": [None]})
+
+        coupler = Coupler(name="all_rows_coupling")
+        coupler.main_dir = tmpdir
+        coupler.add_case(case, attributes=["RHO"])
+        coupler.database = Database(data={"RHO": list(range(22))})
+
+        steps = []
+        coupler.add_coupling_functions(lambda unit, **kwargs: steps.append(unit.c_step))
+
+        coupler.launch()
+
+        assert steps == list(range(22))
+
+
+def test_coupler_max_steps_fails_instead_of_silently_omitting_rows():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        case = Case(name="limited", output_files={})
+        case.database = Database(data={"RHO": [None]})
+
+        coupler = Coupler(name="limited_coupling")
+        coupler.main_dir = tmpdir
+        coupler.add_case(case, attributes=["RHO"])
+        coupler.database = Database(data={"RHO": [1, 2, 3]})
+        coupler.max_steps = 2
+
+        with pytest.raises(CouplingError, match="max_steps"):
+            coupler.launch()

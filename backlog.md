@@ -2,29 +2,45 @@
 
 This document tracks the ongoing development roadmap, completed features, and upcoming tasks for **Labeeb**.
 
+## Release Milestones
+
+| Release | Milestone scope | Release gate | Status |
+|---|---|---|---|
+| **v0.2.2** | Reliability: BL-001 through BL-005 | Full suite green, compatibility CI, no silent failures/skips, committed and pushed | In progress |
+| **v0.3.0** | Campaign foundation: PF-001 through PF-006 | Manifest-to-results end-to-end campaign, resume/retry evidence, local backend and CLI documented | Planned |
+| **v0.4.0** | UQ and reporting: PF-007 through PF-009 | Seeded sampling, sensitivity validation, reproducible HTML/PDF report example | Planned |
+| **v1.0.0** | Stable production API | Compatibility freeze, migration policy, local/HPC workflow acceptance, tagged release | Planned |
+
+Release status is evidence-based: an item is **implemented**, **tested**, **verified**, and **committed/pushed** separately. A release is not complete until all four states are recorded.
+
 ---
 
 ## 0. Release-Blocking Reliability Work
 
 These items were identified during the August 2026 API review. They must be completed and covered by regression tests before using Labeeb to produce sensitivity or uncertainty results.
 
-- [ ] **BL-001 — Restore declared Python compatibility**
+- [x] **BL-001 — Restore declared Python compatibility**
   - Import `Tuple` in `labeeb.case` (or postpone annotation evaluation) so package import works on every supported Python version.
   - Replace or guard `ProcessPoolExecutor.shutdown(cancel_futures=...)` for Python 3.8 support, or raise the documented minimum Python version.
   - Add CI/import smoke tests for the minimum supported Python version.
-- [ ] **BL-002 — Fail runs deterministically and preserve result alignment**
+  - Completed: imported `Tuple`, added a Python 3.8-compatible executor shutdown helper, added compatibility regression tests, and added a Python 3.8/3.14 CI matrix with import smoke coverage.
+- [x] **BL-002 — Fail runs deterministically and preserve result alignment**
   - Raise `CaseExecutionError`, or return an explicit failed case result, when a simulator command returns non-zero or times out.
   - Treat declared-but-missing output files/columns as a failed case, or append a case-ID-indexed missing result with its failure status.
   - Guarantee one status/result record per input row; never silently shorten output vectors.
-- [ ] **BL-003 — Prevent stale template substitutions**
+  - Completed: non-zero exits/timeouts and missing outputs raise `CaseExecutionError`; failed rows receive aligned `None` results and failure history records in serial and parallel launches.
+- [x] **BL-003 — Prevent stale template substitutions**
   - Reset all `FlagsMap` values before each row, then validate that every required template flag has a value.
   - Raise a clear `CaseExecutionError` for missing mapped attributes rather than reusing a prior row's value.
-- [ ] **BL-004 — Make coupling campaign coverage explicit**
+  - Completed: typed and dictionary flag maps now reset and validate values; coupler partial mappings pass only active flags to child cases.
+- [x] **BL-004 — Make coupling campaign coverage explicit**
   - Remove the hard-coded `i > 20` skip in `Coupler.launch`, or replace it with an explicit configurable limit that fails rather than omits work.
   - Add a regression test proving that a 22-row coupling database launches all 22 rows.
-- [ ] **BL-005 — Validate uncertainty distributions**
+  - Completed: default launches cover every database row; `max_steps` now raises `CouplingError` when it would omit rows.
+- [x] **BL-005 — Validate uncertainty distributions**
   - Reject empty value sets, unequal lengths, non-finite or negative probabilities, and probability totals less than or equal to zero with `SamplingError`.
   - Normalize only valid weights and add deterministic seeding/injected RNG support for reproducible studies.
+  - Completed: validated weighted distributions and added injectable RNG support with regression coverage.
 
 ---
 

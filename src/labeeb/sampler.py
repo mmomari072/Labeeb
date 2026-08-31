@@ -5,6 +5,7 @@ Includes Grid Sweep (Full Factorial Design) and Discrete Probability Samplers.
 
 import itertools
 import logging
+import math
 import random
 from typing import Any, Dict, List, Optional, Union
 
@@ -61,12 +62,13 @@ class DiscreteSampling:
     Random object generator based on weighted probability values.
     """
 
-    def __init__(self):
+    def __init__(self, rng: Optional[Any] = None):
         """Initialize empty DiscreteSampling."""
         self.name: str = "OMARI"
         self.values: List[Any] = []
         self.probs: List[float] = []
         self.cdf: List[float] = []
+        self.rng: Any = rng if rng is not None else random
 
     def define_sample(
         self,
@@ -85,6 +87,10 @@ class DiscreteSampling:
 
         if len(self.values) != len(self.probs):
             raise SamplingError("Values and probabilities lists must be of the same length")
+        if not self.values:
+            raise SamplingError("Values and probabilities must not be empty")
+        if any(not math.isfinite(float(p)) or p < 0 for p in self.probs):
+            raise SamplingError("Probabilities must be finite and non-negative")
 
         # Calculate CDF
         self.cdf = [0.0]
@@ -93,8 +99,9 @@ class DiscreteSampling:
 
         # Normalize CDF in case probabilities don't sum to exactly 1.0
         total = self.cdf[-1]
-        if total > 0:
-            self.cdf = [val / total for val in self.cdf]
+        if total <= 0:
+            raise SamplingError("Probability total must be greater than zero")
+        self.cdf = [val / total for val in self.cdf]
         return self
 
     def get_random_sample(self, n: int = 1) -> Union[Any, List[Any]]:
@@ -110,7 +117,7 @@ class DiscreteSampling:
         if n > 1:
             return [self.get_random_sample() for _ in range(n)]
 
-        r = random.random()
+        r = self.rng.random()
         for i in range(1, len(self.cdf)):
             if self.cdf[i - 1] <= r < self.cdf[i]:
                 return self.values[i - 1]

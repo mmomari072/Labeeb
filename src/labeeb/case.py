@@ -5,7 +5,7 @@ input processing, simulation runs, and parsing outputs.
 
 import logging
 import os
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import pandas as pd
 
@@ -15,6 +15,18 @@ from .exceptions import CaseExecutionError
 from .utils import file_io, os_ops, progress
 
 logger = logging.getLogger(__name__)
+
+
+def _shutdown_executor(executor: Any, wait: bool = True, cancel_pending: bool = False) -> None:
+    """Shut down an executor across Python versions with different signatures."""
+    if cancel_pending:
+        try:
+            executor.shutdown(wait=wait, cancel_futures=True)
+            return
+        except TypeError:
+            # ``cancel_futures`` was added after Python 3.8.
+            pass
+    executor.shutdown(wait=wait)
 
 
 class Flag:
@@ -114,11 +126,19 @@ class FlagsMap:
         """
         Set the values of all mapped flags based on active attribute values.
         """
-        for att, val in att_vals.items():
-            for f_class in self._flags.values():
-                if f_class.attribute == att:
-                    f_class.set_value(val)
-                    break
+        for f_class in self._flags.values():
+            f_class.reset()
+
+        missing = []
+        for f_name, f_class in self._flags.items():
+            if f_class.attribute not in att_vals or att_vals[f_class.attribute] is None:
+                missing.append(f"{f_name} ({f_class.attribute})")
+            else:
+                f_class.set_value(att_vals[f_class.attribute])
+        if missing:
+            raise CaseExecutionError(
+                "Missing values for linkage flags: " + ", ".join(missing)
+            )
         return self
 
     def get_flags_values(self, att_vals: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -127,7 +147,13 @@ class FlagsMap:
         """
         if att_vals is not None:
             self.set_values_from_attributes(att_vals)
-        return {f_name: f_obj.get_value() for f_name, f_obj in self._flags.items()}
+        values = {f_name: f_obj.get_value() for f_name, f_obj in self._flags.items()}
+        missing = [f_name for f_name, value in values.items() if value is None]
+        if missing:
+            raise CaseExecutionError(
+                "Missing values for linkage flags: " + ", ".join(missing)
+            )
+        return values
 
 
 class Case(CoupledUnit):
@@ -235,6 +261,8 @@ class Case(CoupledUnit):
         if self.database is None:
             raise CaseExecutionError("Cannot launch case without registering a database")
 
+        active_attributes = kwargs.pop("_active_flag_attributes", None)
+
         # `_attempt` (set by run_to_convergence's repeated passes) keeps
         # repeated self-convergence executions of the same case_id from
         # overwriting each other's run directory. The first attempt (0 or
@@ -261,11 +289,30 @@ class Case(CoupledUnit):
             # Get flags map values
             row_data = self.database.get_row(idx)
             if isinstance(self.FlagsMap, FlagsMap):
-                flagsmap = self.FlagsMap.get_flags_values(row_data)
+                flags = self.FlagsMap
+                if active_attributes is not None:
+                    flags = FlagsMap().add_flag(
+                        *[flag for flag in self.FlagsMap if flag.attribute in active_attributes]
+                    )
+                flagsmap = flags.get_flags_values(row_data)
             else:
-                flagsmap = {
-                    flag_key: str(row_data.get(att_name, ""))
+                active_flags = {
+                    flag_key: att_name
                     for flag_key, att_name in self.FlagsMap.items()
+                    if active_attributes is None or att_name in active_attributes
+                }
+                missing = [
+                    f"{flag_key} ({att_name})"
+                    for flag_key, att_name in active_flags.items()
+                    if att_name not in row_data or row_data[att_name] is None
+                ]
+                if missing:
+                    raise CaseExecutionError(
+                        "Missing values for linkage flags: " + ", ".join(missing)
+                    )
+                flagsmap = {
+                    flag_key: str(row_data[att_name])
+                    for flag_key, att_name in active_flags.items()
                 }
 
             # Write input templates with replaced placeholder flags
@@ -318,12 +365,21 @@ class Case(CoupledUnit):
         if not parallel:
             indent = kwargs.get("indent", 0)
             prog_bar = progress.ProgressBar(name=self.name, start=0, end=num_rows, indent=indent)
+            failures: List[CaseExecutionError] = []
             for i in prog_bar:
                 if self._shall_stop():
                     logger.info("Launcher stopped by the user via STOP_ALL condition")
                     break
                 self.case_id = i
-                self.launch_case(**kwargs)
+                try:
+                    self.launch_case(**kwargs)
+                except CaseExecutionError as exc:
+                    self._record_failed_case(exc)
+                    failures.append(exc)
+            if failures:
+                raise CaseExecutionError(
+                    f"{len(failures)} of {num_rows} cases failed; see execution_history for details"
+                ) from failures[0]
         else:
             from concurrent.futures import ProcessPoolExecutor, as_completed
             import multiprocessing
@@ -337,6 +393,7 @@ class Case(CoupledUnit):
 
             # We use a list to preserve original order of outputs and history
             temp_results = [None] * num_rows
+            failures = []
 
             with ProcessPoolExecutor(max_workers=max_workers) as executor:
                 futures = {
@@ -349,7 +406,7 @@ class Case(CoupledUnit):
                 for future in as_completed(futures):
                     if self._shall_stop():
                         logger.info("Parallel run requested stop, cancelling pending tasks")
-                        executor.shutdown(wait=False, cancel_futures=True)
+                        _shutdown_executor(executor, wait=False, cancel_pending=True)
                         break
 
                     idx = futures[future]
@@ -358,6 +415,17 @@ class Case(CoupledUnit):
                         temp_results[idx] = (outputs, exec_hist)
                     except Exception as e:
                         logger.error(f"Parallel case execution {idx} failed: {e}")
+                        temp_results[idx] = (
+                            {key: [None] for key in self.outputs},
+                            [{
+                                "case_id": idx,
+                                "command": None,
+                                "exit_code": None,
+                                "status": "FAILED",
+                                "error": str(e),
+                            }],
+                        )
+                        failures.append(e)
 
                     prog_bar.update(prog_bar._index + 1)
 
@@ -371,6 +439,14 @@ class Case(CoupledUnit):
                             self.outputs[key].extend(val_list)
                     self.execution_history.extend(exec_hist)
 
+                    if any(entry.get("status") in {"FAILED", "TIMEOUT"} for entry in exec_hist):
+                        failures.append(CaseExecutionError(f"Case {idx} failed"))
+
+            if failures:
+                raise CaseExecutionError(
+                    f"{len(failures)} of {num_rows} cases failed; see execution_history for details"
+                ) from failures[0]
+
         return self
 
     def _shall_stop(self) -> bool:
@@ -378,6 +454,7 @@ class Case(CoupledUnit):
         return os_ops.isfile(stop_file)
 
     def _execute(self) -> List[int]:
+        previous_directory = os.getcwd()
         self._cd(self.current_case_dir)
         exit_codes = []
         try:
@@ -409,12 +486,15 @@ class Case(CoupledUnit):
 
                 if code != 0:
                     logger.error(f"Simulation command returned exit status {status_str} ({code}) for command '{cmd}'")
+                    raise CaseExecutionError(
+                        f"Simulation command failed for case {self.case_id}: '{cmd}' ({status_str}, exit code {code})"
+                    )
                 exit_codes.append(code)
         except Exception as e:
             logger.error(f"Error during simulation command execution: {e}")
             raise CaseExecutionError(f"Failed to execute simulation commands: {e}") from e
         finally:
-            self._cd(self.main_dir)
+            self._cd(previous_directory)
         return exit_codes
 
     def _cd(self, directory: str) -> "Case":
@@ -428,19 +508,38 @@ class Case(CoupledUnit):
         return self
 
     def _read_outputs(self) -> "Case":
+        parsed_outputs: Dict[str, List[Any]] = {}
         for fname, cols in self.output_files.items():
             fullname = os.path.join(self.current_case_dir, fname)
             if not os_ops.isfile(fullname):
-                logger.warning(f"Output file {fullname} not found")
-                continue
+                raise CaseExecutionError(f"Required output file '{fullname}' was not produced")
             try:
                 df = pd.read_csv(fullname, usecols=cols, low_memory=True)
                 for col in cols:
-                    self.outputs[col].append(df[col].tolist())
+                    parsed_outputs[col] = df[col].tolist()
             except Exception as e:
                 logger.error(f"Failed to read output file {fullname}: {e}")
                 raise CaseExecutionError(f"Failed to read simulation output from '{fullname}': {e}") from e
+        for col, values in parsed_outputs.items():
+            self.outputs[col].append(values)
         return self
+
+    def _record_failed_case(self, exc: BaseException) -> None:
+        """Record one failed result for every declared output column."""
+        for col in self.outputs:
+            self.outputs[col].append(None)
+        if not any(
+            entry.get("case_id") == self.case_id
+            and entry.get("status") in {"FAILED", "TIMEOUT"}
+            for entry in self.execution_history
+        ):
+            self.execution_history.append({
+                "case_id": self.case_id,
+                "command": None,
+                "exit_code": None,
+                "status": "FAILED",
+                "error": str(exc),
+            })
 
     def _parse_kwargs(self, **kwargs: Any) -> None:
         for key, val in kwargs.items():
@@ -463,5 +562,8 @@ class Case(CoupledUnit):
 
 def _run_case_worker(case_obj: Case, case_id: int, kwargs: Dict[str, Any]) -> Tuple[Dict[str, List[Any]], List[Dict[str, Any]], int]:
     """Helper worker function to launch a single case in a separate process."""
-    case_obj.launch_case(case_id=case_id, **kwargs)
+    try:
+        case_obj.launch_case(case_id=case_id, **kwargs)
+    except CaseExecutionError as exc:
+        case_obj._record_failed_case(exc)
     return case_obj.outputs, case_obj.execution_history, case_id

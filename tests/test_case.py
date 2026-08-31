@@ -1,7 +1,10 @@
 import os
 import tempfile
 import pytest
+import sys
 from labeeb.case import Flag, FlagsMap, Case
+from labeeb.case import _shutdown_executor
+from labeeb.exceptions import CaseExecutionError
 from labeeb.database import Database
 from labeeb.utils.file_io import File
 
@@ -25,6 +28,37 @@ def test_flags_map():
     vals = fm.get_flags_values({"rho": 12.345, "wf": "abc"})
     assert vals["#RHO#"] == "12.35"
     assert vals["#WF#"] == "abc"
+
+
+def test_flags_map_resets_values_and_rejects_missing_attributes():
+    fm = FlagsMap().add_flag(
+        Flag("#RHO#", "rho", "%5.2f"),
+        Flag("#WF#", "wf", "%5.3f"),
+    )
+
+    fm.get_flags_values({"rho": 19.1, "wf": 0.01})
+
+    with pytest.raises(CaseExecutionError, match="rho"):
+        fm.get_flags_values({"wf": 0.02})
+
+
+def test_case_rejects_missing_mapping_instead_of_reusing_previous_value():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        template_path = os.path.join(tmpdir, "input.txt")
+        with open(template_path, "w") as fid:
+            fid.write("RHO = #RHO#\n")
+
+        c = Case(name="stale_flag", output_files={})
+        c.database = Database(data={"rho": [19.1, None]})
+        c.FlagsMap = {"#RHO#": "rho"}
+        c.add_file(File(file_path=template_path))
+        c.main_dir = tmpdir
+        c.run_case_main_dir = "runs"
+        c.run_type = "new"
+
+        c.launch_case(case_id=0)
+        with pytest.raises(CaseExecutionError, match="rho"):
+            c.launch_case(case_id=1)
 
 
 def test_case_launcher():
@@ -186,7 +220,8 @@ def test_case_parallel_log_timeout():
             c.timeout = 0.05
             c.exe_cmd = ["sleep 2"]
             # Launch case ID 0 with timeout
-            c.launch_case(case_id=0)
+            with pytest.raises(CaseExecutionError):
+                c.launch_case(case_id=0)
 
             # Verify log file recorded timeout
             with open(log_run_0, "r") as fid:
@@ -196,5 +231,59 @@ def test_case_parallel_log_timeout():
         os.chdir(orig_cwd)
 
 
+def test_launch_raises_and_preserves_alignment_for_failed_commands():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        c = Case(name="failed_command", output_files={"out.csv": ["Val"]})
+        c.database = Database(data={"RHO": [1.0, 2.0]})
+        c.main_dir = tmpdir
+        c.run_case_main_dir = "runs"
+        c.run_type = "new"
+        c.exe_cmd = ["exit 7"]
+
+        with pytest.raises(CaseExecutionError):
+            c.launch()
+
+        assert c.outputs["Val"] == [None, None]
+        assert [entry["case_id"] for entry in c.execution_history] == [0, 1]
+        assert all(entry["status"] == "FAILED" for entry in c.execution_history)
 
 
+def test_launch_raises_and_preserves_alignment_for_missing_outputs():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        c = Case(name="missing_output", output_files={"missing.csv": ["Val"]})
+        c.database = Database(data={"RHO": [1.0, 2.0]})
+        c.main_dir = tmpdir
+        c.run_case_main_dir = "runs"
+        c.run_type = "new"
+        c.exe_cmd = []
+
+        with pytest.raises(CaseExecutionError):
+            c.launch()
+
+        assert c.outputs["Val"] == [None, None]
+        assert [entry["case_id"] for entry in c.execution_history] == [0, 1]
+        assert all(entry["status"] == "FAILED" for entry in c.execution_history)
+
+
+def test_parallel_executor_shutdown_supports_python_38_signature():
+    class LegacyExecutor:
+        def __init__(self):
+            self.wait = None
+
+        def shutdown(self, wait=True):
+            self.wait = wait
+
+    executor = LegacyExecutor()
+    _shutdown_executor(executor, wait=False, cancel_pending=True)
+
+    assert executor.wait is False
+
+
+def test_case_worker_annotation_resolves_on_supported_python():
+    import labeeb.case as case_module
+    from typing import get_type_hints
+
+    hints = get_type_hints(case_module._run_case_worker)
+
+    assert hints["return"]
+    assert sys.version_info >= (3, 8)

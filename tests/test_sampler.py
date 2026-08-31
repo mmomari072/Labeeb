@@ -1,4 +1,9 @@
+import random
+
+import pytest
+
 from labeeb.sampler import DiscreteSampling, FOATConstructor
+from labeeb.exceptions import SamplingError
 
 
 def test_discrete_sampling():
@@ -16,6 +21,29 @@ def test_discrete_sampling():
     assert "A" in stats
     assert "B" in stats
     assert 0.6 <= stats["A"] <= 0.8  # Reasonable tolerance for probability
+
+
+@pytest.mark.parametrize(
+    "values, probs",
+    [([], []), (["A"], []), (["A"], [-1.0]), (["A"], [float("nan")]), (["A"], [0.0])],
+)
+def test_discrete_sampling_rejects_invalid_distributions(values, probs):
+    with pytest.raises(SamplingError):
+        DiscreteSampling().define_sample(values=values, probs=probs)
+
+
+def test_discrete_sampling_rejects_infinite_and_mismatched_probabilities():
+    with pytest.raises(SamplingError):
+        DiscreteSampling().define_sample(values=["A"], probs=[float("inf")])
+    with pytest.raises(SamplingError):
+        DiscreteSampling().define_sample(values=["A", "B"], probs=[1.0])
+
+
+def test_discrete_sampling_accepts_injected_rng_for_reproducibility():
+    first = DiscreteSampling(rng=random.Random(42)).define_sample(["A", "B"], [1.0, 1.0])
+    second = DiscreteSampling(rng=random.Random(42)).define_sample(["A", "B"], [1.0, 1.0])
+
+    assert first.get_random_sample(20) == second.get_random_sample(20)
 
 
 def test_foat_constructor_grid_sweep():

@@ -22,7 +22,7 @@ from .sampler import (
 )
 from .utils.file_io import File
 
-__version__ = "0.2.0"
+__version__ = "0.2.2"
 __author__ = "Mohammed Omari"
 
 # Print nice banner on import
