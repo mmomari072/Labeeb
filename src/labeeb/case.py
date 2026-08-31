@@ -255,8 +255,21 @@ class Case(CoupledUnit):
                 logger.warning("Duplicate file ignored.")
         return self
 
-    def add_harvester(self, name: str, pattern: Any, file_target: str) -> "Case":
+    def add_harvester(
+        self,
+        name_or_harvester: Union[str, Any],
+        pattern: Optional[Any] = None,
+        file_target: Optional[str] = None,
+    ) -> "Case":
         """Register a named CSV/JSON/regex or callable output extractor."""
+        from .extractors import Harvester
+
+        if isinstance(name_or_harvester, Harvester):
+            harvester = name_or_harvester
+            self.harvesters[harvester.name] = harvester
+            self.outputs.setdefault(harvester.name, [])
+            return self
+        name = str(name_or_harvester)
         if not name or not file_target:
             raise CaseExecutionError("Harvester name and file_target are required")
         self.harvesters[name] = (pattern, file_target)
@@ -554,15 +567,21 @@ class Case(CoupledUnit):
                 raise CaseExecutionError(f"Failed to read simulation output from '{fullname}': {e}") from e
         for col, values in parsed_outputs.items():
             self.outputs[col].append(values)
-        for name, (pattern, file_target) in self.harvesters.items():
-            target = Path(file_target)
-            if not target.is_absolute():
-                target = Path(self.current_case_dir) / target
+        for name, spec in self.harvesters.items():
             try:
-                self.outputs[name].append(run_extractor(target, pattern))
+                from .extractors import Harvester
+
+                if isinstance(spec, Harvester):
+                    self.outputs[name].append(spec.harvest(self.current_case_dir))
+                else:
+                    pattern, file_target = spec
+                    target = Path(file_target)
+                    if not target.is_absolute():
+                        target = Path(self.current_case_dir) / target
+                    self.outputs[name].append(run_extractor(target, pattern))
             except Exception as exc:
                 raise CaseExecutionError(
-                    f"Failed to harvest '{name}' from '{target}': {exc}"
+                    f"Failed to harvest '{name}': {exc}"
                 ) from exc
         return self
 
