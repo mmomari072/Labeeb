@@ -148,8 +148,9 @@ with CampaignStateStore("campaign_state.sqlite") as state:
 ### B3. Execution Backends (`labeeb.execution`)
 `Case` uses an injectable execution backend. The built-in local backend runs
 shell commands with an explicit case directory, timeout, optional log file,
-and normalized `ExecutionResult`; scheduler backends can implement the same
-interface later.
+and normalized `ExecutionResult`. It logs command start, working directory,
+completion/exit code, duration, timeout, and launch errors through the
+`labeeb.execution` logger. Scheduler backends can implement the same interface.
 
 ```python
 from labeeb.case import Case

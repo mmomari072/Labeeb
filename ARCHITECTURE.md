@@ -56,6 +56,7 @@ flowchart TD
 ### 2.2 Execution Backend Subsystem (`labeeb.execution`)
 * **Backend Contract**: `ExecutionBackend.run()` separates command execution from `Case` orchestration.
 * **Local Backend**: `LocalExecutionBackend` provides cwd, timeout, logging, and normalized `ExecutionResult` behavior; scheduler and container implementations can be added without changing `Case`.
+* **Command Observability**: Every local shell command emits structured logger arguments for start, cwd, completion, exit code, duration, timeout, and launch errors; simulator output remains available through `ExecutionResult` or `log_file`.
 
 ### 2.3 Design Subsystem (`labeeb.sampler`)
 * **Reproducible DOE**: `latin_hypercube_sample()` accepts physical bounds and a seed or generator; `halton_sample()` provides dependency-free low-discrepancy points.

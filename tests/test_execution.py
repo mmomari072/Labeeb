@@ -13,6 +13,24 @@ def test_local_execution_backend_runs_in_requested_directory(tmp_path):
     assert result.timed_out is False
 
 
+def test_local_execution_backend_logs_command_lifecycle(tmp_path, caplog):
+    with caplog.at_level("INFO", logger="labeeb.execution"):
+        result = LocalExecutionBackend().run("printf done", cwd=tmp_path)
+
+    assert result.returncode == 0
+    messages = [record.getMessage() for record in caplog.records]
+    assert any("Starting command 'printf done'" in message for message in messages)
+    assert any("completed with exit code 0" in message for message in messages)
+
+
+def test_local_execution_backend_logs_timeout(tmp_path, caplog):
+    with caplog.at_level("WARNING", logger="labeeb.execution"):
+        result = LocalExecutionBackend().run("sleep 1", cwd=tmp_path, timeout=0.01)
+
+    assert result.timed_out is True
+    assert any("timed out" in record.getMessage() for record in caplog.records)
+
+
 def test_case_accepts_injected_execution_backend(tmp_path):
     class RecordingBackend:
         def __init__(self):

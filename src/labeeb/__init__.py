@@ -33,7 +33,7 @@ from .results import CaseResult, CampaignStateStore, export_case_results
 from .report import write_html_report
 from .utils.file_io import File
 
-__version__ = "1.0.1"
+__version__ = "1.0.2"
 __author__ = "Mohammed Omari"
 
 __all__ = [
