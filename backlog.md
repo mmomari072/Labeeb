@@ -149,6 +149,11 @@ Implement these after the release blockers to make Labeeb suitable for repeatabl
   - Direct plotting capabilities (`db.plot(x_attr, y_attr)` with automatic unit labels and grid formatting).
   - Advanced Excel multi-sheet importing and exporting.
 - [ ] **Deeper Pandas Integration**: Enhanced pandas DataFrame accessor utilities and column type coercion.
+- [ ] **Derived Function Attributes**:
+  - Add an API such as `db.add_derived_attribute("x", lambda row: row["y"] + 1, dependencies=["y"])`.
+  - Track dependencies and metadata, support vectorized evaluation, and
+    recompute derived columns when source attributes change.
+  - Validate missing dependencies and reject circular derived-attribute graphs.
 
 ---
 
