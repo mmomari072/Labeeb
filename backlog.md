@@ -8,7 +8,7 @@ This document tracks the ongoing development roadmap, completed features, and up
 |---|---|---|---|
 | **v0.2.2** | Reliability: BL-001 through BL-005 | Full suite green, compatibility CI, no silent failures/skips, committed and pushed | Released |
 | **v0.3.0** | Campaign foundation: PF-001 through PF-006 | Manifest-to-results end-to-end campaign, resume/retry evidence, local backend and CLI documented | Released |
-| **v0.4.0** | API-first case studies and DOE foundation: PF-007 | Python Campaign runner, resumable case studies, seeded LHS and Halton designs | Implemented; release gate pending |
+| **v0.4.0** | API-first case studies and DOE foundation: PF-007 | Python Campaign runner, resumable case studies, seeded LHS and Halton designs | Released |
 | **v0.5.0** | UQ and reporting: PF-008 through PF-009 | Sensitivity validation, tolerance limits, reproducible HTML/PDF report example | Planned |
 | **v1.0.0** | Stable production API | Compatibility freeze, migration policy, local/HPC workflow acceptance, tagged release | Planned |
 
