@@ -58,6 +58,7 @@ flowchart TD
 * **Local Backend**: `LocalExecutionBackend` provides cwd, timeout, logging, and normalized `ExecutionResult` behavior; scheduler and container implementations can be added without changing `Case`.
 * **Command Observability**: Every local shell command emits structured logger arguments for start, cwd, completion, exit code, duration, timeout, and launch errors; simulator output remains available through `ExecutionResult` or `log_file`.
 * **Execution Events**: `ExecutionEvent` records timestamps, status, return code, output sizes, and case context; campaigns append lifecycle, retry, cache, and command events incrementally as JSONL. Appends use a single OS-level append write so parallel workers cannot interleave event records. Optional per-case stdout/stderr artifacts are controlled by the API manifest.
+* **Status Registry**: `StatusRegistry` provides an in-memory, case-indexed view of status, duration, exit codes, stream metadata, failures, and exported summaries; it is designed as the read model for later campaign-state integration.
 
 ### 2.2.1 Logging Configuration API (`labeeb.logging_config`)
 * **Application-Owned Setup**: `configure_logging()` adds optional stream and rotating-file handlers to the `labeeb` namespace without modifying the root logger.

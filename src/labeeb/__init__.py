@@ -39,7 +39,7 @@ from .sampler import (
     sample,
     uniform_sample,
 )
-from .results import CaseResult, CampaignStateStore, export_case_results
+from .results import CaseResult, CampaignStateStore, ExecutionStatusRegistry, StatusRegistry, export_case_results
 from .report import write_html_report
 from .logging_config import CaseLoggerAdapter, configure_logging
 from .utils.file_io import File
@@ -50,6 +50,7 @@ __author__ = "Mohammed Omari"
 __all__ = [
     "AnalysisError", "Attribute", "Campaign", "CampaignError", "CampaignManifest",
     "CampaignStateStore", "Case", "CaseExecutionError", "CaseResult", "Coupler",
+    "StatusRegistry", "ExecutionStatusRegistry",
     "CouplingError", "Database", "DatabaseError", "DiscreteSampling", "ExecutionBackend",
     "ExecutionEvent", "ExecutionResult", "ExtractionError", "FOATConstructor", "File", "Flag", "FlagsMap",
     "LabeebError", "LocalExecutionBackend", "SamplingError", "correlation_analysis",
