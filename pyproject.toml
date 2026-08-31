@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "labeeb"
-version = "0.2.2"
+version = "0.3.0"
 authors = [
     { name = "Mohammed Omari", email = "mmomari072@gmail.com" }
 ]
@@ -39,6 +39,9 @@ dev = [
     "jinja2>=3.0.0",
     "matplotlib>=3.0.0",
 ]
+
+[project.scripts]
+labeeb = "labeeb.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

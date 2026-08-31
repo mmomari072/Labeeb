@@ -121,6 +121,21 @@ def test_case_launcher():
         os.chdir(orig_cwd)
 
 
+def test_case_harvester_extracts_named_metric():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        c = Case(name="harvested", output_files={})
+        c.database = Database(data={"RHO": [19.0]})
+        c.main_dir = tmpdir
+        c.run_case_main_dir = "runs"
+        c.run_type = "new"
+        c.exe_cmd = ["echo 'residual = 1.2e-3' > solver.log"]
+        c.add_harvester("residual", r"residual = ([0-9.e-]+)", "solver.log")
+
+        c.launch()
+
+        assert c.outputs["residual"] == ["1.2e-3"]
+
+
 def test_file_io_sequential_replace():
     # Setup temporary template file
     with tempfile.TemporaryDirectory() as tmpdir:

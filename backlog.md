@@ -7,7 +7,7 @@ This document tracks the ongoing development roadmap, completed features, and up
 | Release | Milestone scope | Release gate | Status |
 |---|---|---|---|
 | **v0.2.2** | Reliability: BL-001 through BL-005 | Full suite green, compatibility CI, no silent failures/skips, committed and pushed | In progress |
-| **v0.3.0** | Campaign foundation: PF-001 through PF-006 | Manifest-to-results end-to-end campaign, resume/retry evidence, local backend and CLI documented | In progress |
+| **v0.3.0** | Campaign foundation: PF-001 through PF-006 | Manifest-to-results end-to-end campaign, resume/retry evidence, local backend and CLI documented | Ready for release |
 | **v0.4.0** | UQ and reporting: PF-007 through PF-009 | Seeded sampling, sensitivity validation, reproducible HTML/PDF report example | Planned |
 | **v1.0.0** | Stable production API | Compatibility freeze, migration policy, local/HPC workflow acceptance, tagged release | Planned |
 
@@ -64,11 +64,13 @@ Implement these after the release blockers to make Labeeb suitable for repeatabl
   - Separate execution from `Case` behind a backend interface.
   - Support local processes first, then SLURM/PBS job submission and containerized execution.
   - Completed local foundation: added injectable `ExecutionBackend` and `LocalExecutionBackend`; scheduler/container backends remain follow-up extensions.
-- [ ] **PF-005 — Extensible output extractors**
+- [x] **PF-005 — Extensible output extractors**
   - Support CSV, JSON, regex/text, and user-supplied extractor functions.
   - Validate expected fields and units before admitting metrics into campaign results.
-- [ ] **PF-006 — Configuration-first CLI**
+  - Completed: added built-in CSV/JSON/regex extractors, callable support, named Case harvesters, and missing-field errors.
+- [x] **PF-006 — Configuration-first CLI**
   - Provide commands such as `labeeb validate`, `labeeb run campaign.yml`, `labeeb status`, and `labeeb resume`.
+  - Completed: added the `labeeb` console entry point and validated local run/status/resume commands.
 
 ---
 

@@ -15,6 +15,7 @@ from .exceptions import (
     SamplingError,
 )
 from .execution import ExecutionBackend, ExecutionResult, LocalExecutionBackend
+from .extractors import ExtractionError, extract_csv, extract_json, extract_regex, run_extractor
 from .sampler import (
     DiscreteSampling,
     FOATConstructor,
@@ -25,7 +26,7 @@ from .sampler import (
 from .results import CaseResult, CampaignStateStore, export_case_results
 from .utils.file_io import File
 
-__version__ = "0.2.2"
+__version__ = "0.3.0"
 __author__ = "Mohammed Omari"
 
 # Print nice banner on import

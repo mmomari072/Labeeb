@@ -137,6 +137,16 @@ case = Case("local")
 case.execution_backend = LocalExecutionBackend()
 ```
 
+### B4. Configuration-First CLI
+The installed `labeeb` command supports manifest validation and local runs:
+
+```bash
+labeeb validate campaign.yml
+labeeb run campaign.yml --state campaign_state.sqlite
+labeeb status campaign_state.sqlite
+labeeb resume campaign_state.sqlite
+```
+
 ### C. Case Launcher & Templates (`labeeb.case` & `labeeb.utils.file_io`)
 Define templates, render inputs, execute runs, and parse output tables. Labeeb supports two template rendering options:
 

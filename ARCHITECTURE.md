@@ -56,6 +56,9 @@ flowchart TD
 * **Backend Contract**: `ExecutionBackend.run()` separates command execution from `Case` orchestration.
 * **Local Backend**: `LocalExecutionBackend` provides cwd, timeout, logging, and normalized `ExecutionResult` behavior; scheduler and container implementations can be added without changing `Case`.
 
+### 2.3 CLI Subsystem (`labeeb.cli`)
+* **Configuration Workflow**: `validate`, `run`, `status`, and `resume` expose manifest-driven local campaigns and persisted state without coupling the command parser to future scheduler backends.
+
 ### 2.1 Database Subsystem (`labeeb.database`)
 * **Vectorized Column Operations**: The `Attribute` class provides element-wise numerical operations and logical masking.
 * **Storage Agnostic**: `Database` interfaces directly with `pandas.DataFrame` under the hood for serializing to and from CSV, Excel, Parquet, JSON, and Pickle.

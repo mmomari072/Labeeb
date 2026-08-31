@@ -113,6 +113,18 @@ class CampaignStateStore:
         state = self.get(case_id)
         return state is None or state["attempts"] < max_retries
 
+    def summary(self) -> Dict[str, int]:
+        """Return persisted case counts grouped by execution status."""
+        rows = self.connection.execute(
+            "SELECT status, COUNT(*) FROM campaign_cases GROUP BY status"
+        ).fetchall()
+        return {status.lower(): count for status, count in rows}
+
+    def case_ids(self) -> List[int]:
+        """Return all persisted case IDs in ascending order."""
+        rows = self.connection.execute("SELECT case_id FROM campaign_cases ORDER BY case_id").fetchall()
+        return [row[0] for row in rows]
+
     def close(self) -> None:
         self.connection.close()
 

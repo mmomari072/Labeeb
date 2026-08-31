@@ -5,6 +5,7 @@ input processing, simulation runs, and parsing outputs.
 
 import logging
 import os
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import pandas as pd
@@ -13,6 +14,7 @@ from .coupled_unit import CoupledUnit
 from .database import Attribute, Database
 from .exceptions import CaseExecutionError
 from .execution import ExecutionBackend, LocalExecutionBackend
+from .extractors import run_extractor
 from .utils import file_io, os_ops, progress
 
 logger = logging.getLogger(__name__)
@@ -178,6 +180,7 @@ class Case(CoupledUnit):
         self.FlagsMap: Union[FlagsMap, Dict[str, str]] = {}
         self.exe_cmd: List[str] = []
         self.execution_backend: ExecutionBackend = LocalExecutionBackend()
+        self.harvesters: Dict[str, Any] = {}
         self.input_files: List[file_io.File] = []
 
         self.main_dir: str = os.getcwd()
@@ -220,6 +223,8 @@ class Case(CoupledUnit):
         for _, val in self.output_files.items():
             for att in val:
                 self.outputs[att] = []
+        for name in self.harvesters:
+            self.outputs[name] = []
         self.outputs_db = pd.DataFrame()
 
     def import_FlagsMap(self, filename: str = "omari.xlsx", sheetname: str = "omari") -> "Case":
@@ -247,6 +252,14 @@ class Case(CoupledUnit):
                 logger.info(f"File {f.fname} has been added to [{self.name}]. Total: {len(self.input_files)}")
             else:
                 logger.warning("Duplicate file ignored.")
+        return self
+
+    def add_harvester(self, name: str, pattern: Any, file_target: str) -> "Case":
+        """Register a named CSV/JSON/regex or callable output extractor."""
+        if not name or not file_target:
+            raise CaseExecutionError("Harvester name and file_target are required")
+        self.harvesters[name] = (pattern, file_target)
+        self.outputs.setdefault(name, [])
         return self
 
     def launch_case(self, case_id: Optional[int] = None, **kwargs: Any) -> "Case":
@@ -523,6 +536,16 @@ class Case(CoupledUnit):
                 raise CaseExecutionError(f"Failed to read simulation output from '{fullname}': {e}") from e
         for col, values in parsed_outputs.items():
             self.outputs[col].append(values)
+        for name, (pattern, file_target) in self.harvesters.items():
+            target = Path(file_target)
+            if not target.is_absolute():
+                target = Path(self.current_case_dir) / target
+            try:
+                self.outputs[name].append(run_extractor(target, pattern))
+            except Exception as exc:
+                raise CaseExecutionError(
+                    f"Failed to harvest '{name}' from '{target}': {exc}"
+                ) from exc
         return self
 
     def _record_failed_case(self, exc: BaseException) -> None:
