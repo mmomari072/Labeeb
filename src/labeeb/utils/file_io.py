@@ -5,6 +5,7 @@ Used heavily for managing code input decks (e.g. MCNP, RELAP5 inputs).
 
 import logging
 import os
+import re
 from copy import deepcopy
 from typing import Any, Callable, Dict, List, Optional, Union
 
@@ -118,6 +119,26 @@ class File:
             str_val = str(val)
             for line_id in line_ids:
                 self._replaced[line_id] = self._replaced[line_id].replace(word, str_val)
+        return self
+
+    def replace_assignments(self, values: Dict[str, Any]) -> "File":
+        """Replace values in assignment-style records while preserving syntax.
+
+        For example, ``x=1`` becomes ``x=42`` when ``{"x": 42}`` is supplied.
+        Whitespace, separators, comments, and unrelated identifiers are retained.
+        """
+        self._replaced = deepcopy(self._db)
+        for key, value in values.items():
+            if not isinstance(key, str) or not key:
+                raise ValueError("Assignment keys must be non-empty strings")
+            pattern = re.compile(
+                rf"(?<![A-Za-z0-9_.-])({re.escape(key)}\s*=\s*)"
+                r"([^\s,;!#$]+)"
+            )
+            self._replaced = [
+                pattern.sub(lambda match: match.group(1) + str(value), line)
+                for line in self._replaced
+            ]
         return self
 
     def render_jinja(self, context: Dict[str, Any]) -> "File":

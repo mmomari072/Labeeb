@@ -151,6 +151,17 @@ def test_file_io_sequential_replace():
         assert f[0] == "18.5 and 19.5"
 
 
+def test_file_io_replaces_assignment_values_without_changing_record_shape():
+    f = File()
+    f._db = ["x=1   $ keep comment", "x = 2, y=3", "prefix_x=9"]
+
+    f.replace_assignments({"x": 42, "y": 7})
+
+    assert f[0] == "x=42   $ keep comment"
+    assert f[1] == "x = 42, y=7"
+    assert f[2] == "prefix_x=9"
+
+
 def test_file_io_jinja2():
     # Setup temporary template file
     with tempfile.TemporaryDirectory() as tmpdir:

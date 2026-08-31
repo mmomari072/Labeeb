@@ -160,6 +160,13 @@ Implement these after the release blockers to make Labeeb suitable for repeatabl
 - [ ] **Custom Jinja2 Filters & Math Functions**:
   - Number formatters (e.g., `{{ RHO | fmt("%6.4f") }}`, scientific notation `5e`).
   - Built-in math functions (`cos()`, `sin()`, `exp()`, arithmetic combinations) accessible within templates.
+- [ ] **Expression-Aware Text Replacement**:
+  - Search assignment-style records such as `x=1` (including configured
+    whitespace/format variants) and replace only the value, e.g. `x=42`.
+  - Support values computed from the case/database API while preserving the
+    original key, separators, comments, and line structure.
+  - Add safe matching, formatting controls, and regression tests for repeated
+    keys, scientific notation, and missing assignments.
 - [ ] **Fixed-Width & Fortran Card Formatters**:
   - Strict column-aligned text formatting (e.g., 5-character / 10-character cards for legacy codes like MCNP and RELAP5) to prevent overflow errors.
 
@@ -168,7 +175,7 @@ Implement these after the release blockers to make Labeeb suitable for repeatabl
 ## 5. Execution & Output Harvesting Engine (`labeeb.case`)
 
 - [x] **Case Runner**: Directory tree generator (`case_0`, `case_1`, ...), input deck deployment, and subprocess execution.
-- [ ] **Execution Failure Semantics**: Timeout handling, log capture, `CaseExecutionError`, and a reliable per-case success/failure contract. See BL-002.
+- [x] **Execution Failure Semantics**: Timeout handling, log capture, `CaseExecutionError`, and a reliable per-case success/failure contract. See BL-002; completed in the reliability milestone.
 - [ ] **Execution Status Registry**: Detailed tracking and database recording of exit codes, execution wall-clock time, and stdout/stderr status per case.
 - [ ] **Declarative Output Harvesters**:
   - Declarative pattern extractors (`runner.add_harvester(name, pattern, file_target)`) that parse stdout/output files and append columns back into `Database`.
@@ -178,7 +185,7 @@ Implement these after the release blockers to make Labeeb suitable for repeatabl
 
 ## 6. Multi-Physics Coupling Kernel (`labeeb.coupler`)
 
-- [ ] **Complete Iterative Coupling Loop**: Step-wise orchestration that executes every requested database row without silent limits. See BL-004.
+- [x] **Complete Iterative Coupling Loop**: Step-wise orchestration that executes every requested database row without silent limits. See BL-004; completed in the reliability milestone.
 - [x] **Step Callbacks & Shared Databases**: Parameter mapping and cross-case state propagation.
 - [ ] **Coupling Stability & Relaxation Controls**:
   - Under-relaxation algorithms and Aitken $\Delta^2$ acceleration to dampen feedback oscillations between physics codes (e.g. neutronics $\leftrightarrow$ thermal-hydraulics).
