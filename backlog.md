@@ -19,6 +19,10 @@ signatures are stable for the 1.x series. Additions are backward compatible;
 removals or signature changes require a deprecation notice and a future major
 release.
 
+Logging API progress: v1.1 adds application-owned configuration, rotating file
+handlers, and contextual command records; CLI verbosity flags remain secondary
+follow-up work.
+
 ---
 
 ## 0. Release-Blocking Reliability Work

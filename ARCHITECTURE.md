@@ -58,6 +58,10 @@ flowchart TD
 * **Local Backend**: `LocalExecutionBackend` provides cwd, timeout, logging, and normalized `ExecutionResult` behavior; scheduler and container implementations can be added without changing `Case`.
 * **Command Observability**: Every local shell command emits structured logger arguments for start, cwd, completion, exit code, duration, timeout, and launch errors; simulator output remains available through `ExecutionResult` or `log_file`.
 
+### 2.2.1 Logging Configuration API (`labeeb.logging_config`)
+* **Application-Owned Setup**: `configure_logging()` adds optional stream and rotating-file handlers to the `labeeb` namespace without modifying the root logger.
+* **Context**: `CaseLoggerAdapter` attaches `case_id`, `unit`, and `attempt` to records and prefixes messages for readable case-study logs.
+
 ### 2.3 Design Subsystem (`labeeb.sampler`)
 * **Reproducible DOE**: `latin_hypercube_sample()` accepts physical bounds and a seed or generator; `halton_sample()` provides dependency-free low-discrepancy points.
 

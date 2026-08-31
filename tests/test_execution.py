@@ -1,8 +1,11 @@
+import logging
+
 from pathlib import Path
 
 from labeeb.case import Case
 from labeeb.database import Database
 from labeeb.execution import ExecutionResult, LocalExecutionBackend
+from labeeb.logging_config import CaseLoggerAdapter
 
 
 def test_local_execution_backend_runs_in_requested_directory(tmp_path):
@@ -29,6 +32,20 @@ def test_local_execution_backend_logs_timeout(tmp_path, caplog):
 
     assert result.timed_out is True
     assert any("timed out" in record.getMessage() for record in caplog.records)
+
+
+def test_local_execution_backend_preserves_case_context(tmp_path, caplog):
+    command_logger = CaseLoggerAdapter(
+        logging.getLogger("labeeb.execution"),
+        {"case_id": 3, "unit": "mcnp", "attempt": 1},
+    )
+    with caplog.at_level("INFO", logger="labeeb.execution"):
+        LocalExecutionBackend(command_logger=command_logger).run("true", cwd=tmp_path)
+
+    record = caplog.records[-1]
+    assert record.case_id == 3
+    assert record.unit == "mcnp"
+    assert record.attempt == 1
 
 
 def test_case_accepts_injected_execution_backend(tmp_path):

@@ -155,7 +155,9 @@ completion/exit code, duration, timeout, and launch errors through the
 ```python
 from labeeb.case import Case
 from labeeb.execution import LocalExecutionBackend
+from labeeb import configure_logging
 
+configure_logging(level="INFO", log_file="campaign.log")
 case = Case("local")
 case.execution_backend = LocalExecutionBackend()
 ```

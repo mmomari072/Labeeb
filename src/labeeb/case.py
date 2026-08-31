@@ -15,6 +15,7 @@ from .database import Attribute, Database
 from .exceptions import CaseExecutionError
 from .execution import ExecutionBackend, LocalExecutionBackend
 from .extractors import run_extractor
+from .logging_config import CaseLoggerAdapter
 from .utils import file_io, os_ops, progress
 
 logger = logging.getLogger(__name__)
@@ -284,6 +285,7 @@ class Case(CoupledUnit):
         # unset, i.e. the normal non-convergence path) keeps today's
         # unsuffixed naming.
         attempt = kwargs.pop("_attempt", 0) or 0
+        self._attempt = attempt
         dir_name = (
             f"{self.run_case_sub_dir}_{idx}"
             if not attempt
@@ -470,6 +472,12 @@ class Case(CoupledUnit):
 
     def _execute(self) -> List[int]:
         exit_codes = []
+        command_logger = CaseLoggerAdapter(
+            logger,
+            {"case_id": self.case_id, "unit": self.name, "attempt": getattr(self, "_attempt", 0)},
+        )
+        if hasattr(self.execution_backend, "set_logger"):
+            self.execution_backend.set_logger(command_logger)  # type: ignore[attr-defined]
         try:
             for cmd in self.exe_cmd:
                 timeout = getattr(self, "timeout", None)

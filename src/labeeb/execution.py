@@ -37,6 +37,14 @@ class ExecutionBackend:
 class LocalExecutionBackend(ExecutionBackend):
     """Run a command as a local shell process."""
 
+    def __init__(self, command_logger: Optional[logging.Logger] = None) -> None:
+        self.command_logger = command_logger or logger
+
+    def set_logger(self, command_logger: logging.Logger) -> "LocalExecutionBackend":
+        """Set the logger used for command lifecycle records."""
+        self.command_logger = command_logger
+        return self
+
     def run(
         self,
         command: str,
@@ -46,7 +54,7 @@ class LocalExecutionBackend(ExecutionBackend):
     ) -> ExecutionResult:
         started = time.monotonic()
         stream = None
-        logger.info("Starting command %r in %s", command, cwd)
+        self.command_logger.info("Starting command %r in %s", command, cwd)
         try:
             if log_file is not None:
                 stream = open(log_file, "a", encoding="utf-8")
@@ -65,7 +73,7 @@ class LocalExecutionBackend(ExecutionBackend):
                 stderr=stderr,
                 duration_seconds=time.monotonic() - started,
             )
-            logger.info(
+            self.command_logger.info(
                 "Command %r completed with exit code %s in %.3fs",
                 command,
                 result.returncode,
@@ -74,7 +82,7 @@ class LocalExecutionBackend(ExecutionBackend):
             return result
         except subprocess.TimeoutExpired as exc:
             duration = time.monotonic() - started
-            logger.warning("Command %r timed out after %s seconds in %.3fs", command, timeout, duration)
+            self.command_logger.warning("Command %r timed out after %s seconds in %.3fs", command, timeout, duration)
             if stream is not None:
                 stream.write(f"\n[ERROR] Command timed out after {timeout} seconds.\n")
             return ExecutionResult(
@@ -85,7 +93,7 @@ class LocalExecutionBackend(ExecutionBackend):
                 timed_out=True,
             )
         except OSError as exc:
-            logger.error("Command %r could not be executed: %s", command, exc)
+            self.command_logger.error("Command %r could not be executed: %s", command, exc)
             return ExecutionResult(
                 returncode=-1,
                 stderr=str(exc),

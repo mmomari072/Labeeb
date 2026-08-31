@@ -4,6 +4,9 @@ Developed for nuclear reactor code coupling and sensitivity analysis (MCNP, RELA
 """
 
 import os
+import logging
+
+logging.getLogger("labeeb").addHandler(logging.NullHandler())
 
 from .case import Case, Flag, FlagsMap
 from .campaign import Campaign, CampaignError, CampaignManifest, load_manifest
@@ -31,9 +34,10 @@ from .sampler import (
 )
 from .results import CaseResult, CampaignStateStore, export_case_results
 from .report import write_html_report
+from .logging_config import CaseLoggerAdapter, configure_logging
 from .utils.file_io import File
 
-__version__ = "1.0.2"
+__version__ = "1.1.0"
 __author__ = "Mohammed Omari"
 
 __all__ = [
@@ -45,7 +49,7 @@ __all__ = [
     "export_case_results", "extract_csv", "extract_json", "extract_regex", "halton_sample",
     "latin_hypercube_sample", "load_manifest", "morris_screening", "normal_sample", "product",
     "run_extractor", "sample", "sobol_indices", "uniform_sample", "wilks_sample_size",
-    "write_html_report", "print_banner",
+    "write_html_report", "print_banner", "CaseLoggerAdapter", "configure_logging",
 ]
 
 def print_banner() -> None:
