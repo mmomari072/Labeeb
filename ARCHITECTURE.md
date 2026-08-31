@@ -72,6 +72,8 @@ flowchart TD
 `labeeb.__all__` is the explicit supported import surface for v1.x. Campaign
 parameter rows are validated before execution, and incompatible API removals
 must wait for a major-version migration.
+The package import is side-effect free by default; the identification banner is
+explicitly enabled with `LABEEB_SHOW_BANNER` or `print_banner()`.
 
 ### 2.1 Database Subsystem (`labeeb.database`)
 * **Vectorized Column Operations**: The `Attribute` class provides element-wise numerical operations and logical masking.

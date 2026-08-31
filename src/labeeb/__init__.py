@@ -3,6 +3,8 @@ Labeeb: Sensitivity and Uncertainty Analysis interface for text-based input deck
 Developed for nuclear reactor code coupling and sensitivity analysis (MCNP, RELAP5, etc.).
 """
 
+import os
+
 from .case import Case, Flag, FlagsMap
 from .campaign import Campaign, CampaignError, CampaignManifest, load_manifest
 from .coupler import Coupler
@@ -31,7 +33,7 @@ from .results import CaseResult, CampaignStateStore, export_case_results
 from .report import write_html_report
 from .utils.file_io import File
 
-__version__ = "1.0.0"
+__version__ = "1.0.1"
 __author__ = "Mohammed Omari"
 
 __all__ = [
@@ -43,23 +45,28 @@ __all__ = [
     "export_case_results", "extract_csv", "extract_json", "extract_regex", "halton_sample",
     "latin_hypercube_sample", "load_manifest", "morris_screening", "normal_sample", "product",
     "run_extractor", "sample", "sobol_indices", "uniform_sample", "wilks_sample_size",
-    "write_html_report",
+    "write_html_report", "print_banner",
 ]
 
-# Print nice banner on import
-print("*" * 80)
-print(
-    """  _           _               _     
+def print_banner() -> None:
+    """Print the optional package identification banner."""
+    print("*" * 80)
+    print(
+        """  _           _               _
  | |         | |             | |    
  | |     __ _| |__   ___  ___| |__  
  | |    / _` | '_ \\ / _ \\/ _ \\ '_ \\ 
  | |___| (_| | |_) |  __/  __/ |_) |
  |______\\__,_|_.__/ \\___|\\___|_.__/ 
 """
-)
-print(f"----------------------------------------------------")
-print(f"CREATED BY : Eng. Mohammad OMARI")
-print(f"INSTITUTE  : Jordan Research and Training Reactor")
-print(f"VERSION    : {__version__}")
-print(f"DATE       : Aug 2026")
-print("*" * 80)
+    )
+    print("----------------------------------------------------")
+    print("CREATED BY : Eng. Mohammad OMARI")
+    print("INSTITUTE  : Jordan Research and Training Reactor")
+    print(f"VERSION    : {__version__}")
+    print("DATE       : Aug 2026")
+    print("*" * 80)
+
+
+if os.environ.get("LABEEB_SHOW_BANNER", "").strip().lower() in {"1", "true", "yes", "on"}:
+    print_banner()

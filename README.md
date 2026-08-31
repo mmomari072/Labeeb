@@ -187,6 +187,9 @@ The supported public surface is the names exported by `labeeb.__all__`. The 1.x
 series preserves those names and documented signatures; incompatible changes
 require a future major version.
 
+Imports are silent by default. To display the identification banner, set
+`LABEEB_SHOW_BANNER=1` before importing, or call `labeeb.print_banner()`.
+
 ### C. Case Launcher & Templates (`labeeb.case` & `labeeb.utils.file_io`)
 Define templates, render inputs, execute runs, and parse output tables. Labeeb supports two template rendering options:
 
