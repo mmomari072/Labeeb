@@ -1,4 +1,5 @@
 import logging
+import json
 
 from labeeb.logging_config import CaseLoggerAdapter, configure_logging
 
@@ -28,3 +29,26 @@ def test_case_logger_adapter_includes_case_and_attempt_context(caplog):
     assert record.unit == "shield"
     assert record.attempt == 2
     assert record.getMessage() == "[case_id=4 unit=shield attempt=2] command completed"
+
+
+def test_configure_logging_supports_json_and_redacts_sensitive_values(tmp_path):
+    log_path = tmp_path / "events.log"
+    logger = configure_logging(log_file=log_path, stream=False, json_format=True)
+
+    logger.warning("token=abc123 command completed")
+
+    record = json.loads(log_path.read_text(encoding="utf-8").strip())
+    assert record["level"] == "WARNING"
+    assert "abc123" not in record["message"]
+    assert "[REDACTED]" in record["message"]
+
+
+def test_configure_logging_redacts_sensitive_values_in_plain_logs(tmp_path):
+    log_path = tmp_path / "labeeb.log"
+    logger = configure_logging(log_file=log_path, stream=False)
+
+    logger.warning("password=abc123")
+
+    content = log_path.read_text(encoding="utf-8")
+    assert "abc123" not in content
+    assert "password=[REDACTED]" in content

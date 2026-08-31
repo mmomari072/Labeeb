@@ -494,6 +494,13 @@ class Case(CoupledUnit):
                 result = self.execution_backend.run(
                     cmd, cwd=self.current_case_dir, timeout=timeout, log_file=log_file
                 )
+                if getattr(self, "capture_output", False) and self.current_case_dir:
+                    if result.stdout:
+                        with open(os.path.join(self.current_case_dir, "stdout.log"), "a", encoding="utf-8") as stream:
+                            stream.write(result.stdout)
+                    if result.stderr:
+                        with open(os.path.join(self.current_case_dir, "stderr.log"), "a", encoding="utf-8") as stream:
+                            stream.write(result.stderr)
                 code = result.returncode
 
                 t_duration = time.time() - t_start

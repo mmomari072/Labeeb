@@ -4,6 +4,7 @@ import hashlib
 import json
 import shutil
 import time
+from datetime import datetime, timezone
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, TYPE_CHECKING, Union
@@ -159,7 +160,28 @@ class Campaign:
             case.timeout = execution["timeout"]
         if "log_file" in execution:
             case.log_file = execution["log_file"]
+        case.capture_output = bool(execution.get("capture_output", False))
         return case
+
+    def _append_lifecycle_event(
+        self, event_type: str, cwd: Union[str, Path], case_id: Optional[int] = None,
+        attempt: int = 0, status: str = "INFO", message: Optional[str] = None,
+    ) -> None:
+        events_file = self.manifest.execution.get("events_file")
+        if not events_file:
+            return
+        from .execution import ExecutionEvent, append_execution_event
+
+        now = datetime.now(timezone.utc).isoformat()
+        event = ExecutionEvent(
+            command="", cwd=str(cwd), status=status, returncode=0 if status != "FAILED" else 1,
+            duration_seconds=0.0, started_at=now, ended_at=now, case_id=case_id,
+            unit=self.manifest.name, attempt=attempt, event_type=event_type, message=message,
+        )
+        event_path = Path(events_file)
+        if not event_path.is_absolute():
+            event_path = Path(cwd).parent / event_path
+        append_execution_event(event, event_path)
 
     def _input_hash(self, case_id: int, parameters: Dict[str, Any]) -> str:
         payload = {
@@ -194,12 +216,15 @@ class Campaign:
         state_context = self._state() if self.state_path is not None else None
         state = state_context.__enter__() if state_context is not None else None
         results: List[CaseResult] = []
+        campaign_status = "SUCCESS"
+        self._append_lifecycle_event("campaign_start", run_root)
         try:
             for case_id in range(len(case.database)):
                 parameters = case.database.get_row(case_id)
                 input_hash = self._input_hash(case_id, parameters)
                 persisted = state.get(case_id) if state is not None else None
                 if resume and state is not None and state.should_reuse(case_id, input_hash):
+                    self._append_lifecycle_event("case_cache_hit", run_root, case_id=case_id, status="SKIPPED")
                     results.append(CaseResult.from_record(persisted["result"]))
                     continue
                 if state is not None and persisted is not None and not state.retry_allowed(case_id, max_retries):
@@ -208,8 +233,10 @@ class Campaign:
 
                 started = time.monotonic()
                 case.case_id = case_id
+                attempt = persisted["attempts"] if persisted is not None else 0
+                self._append_lifecycle_event("case_start", run_root, case_id=case_id, attempt=attempt, status="STARTED")
                 try:
-                    case.launch_case(case_id)
+                    case.launch_case(case_id, _attempt=attempt)
                     result = CaseResult(case_id, parameters, "SUCCESS", 0, time.monotonic() - started)
                 except CaseExecutionError as exc:
                     result = CaseResult(
@@ -225,10 +252,17 @@ class Campaign:
                         if not event_path.is_absolute():
                             event_path = Path(case.main_dir) / event_path
                         append_execution_event(ExecutionEvent.from_dict(event_record), event_path)
+                self._append_lifecycle_event(
+                    "case_complete" if result.status == "SUCCESS" else "case_failure",
+                    run_root, case_id=case_id, attempt=attempt, status=result.status, message=result.failure,
+                )
+                if result.status != "SUCCESS":
+                    campaign_status = "FAILED"
                 if state is not None:
                     state.save(result, input_hash)
                 results.append(result)
         finally:
             if state_context is not None:
                 state_context.__exit__(None, None, None)
+        self._append_lifecycle_event("campaign_complete", run_root, status=campaign_status)
         return results

@@ -1,6 +1,8 @@
 """Application-owned logging configuration and execution context helpers."""
 
+import json
 import logging
+import re
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Any, Dict, Optional, Union
@@ -8,6 +10,35 @@ from typing import Any, Dict, Optional, Union
 
 _HANDLER_MARKER = "_labeeb_handler"
 _FORMAT = "%(asctime)s %(levelname)s %(name)s %(message)s"
+_SECRET_PATTERN = re.compile(r"(?i)(password|token|secret|api[_-]?key)(\s*[=:]\s*)[^\s,;]+")
+
+
+def redact_sensitive(value: str) -> str:
+    """Redact common key/value secrets before they reach logs or events."""
+    return _SECRET_PATTERN.sub(r"\1\2[REDACTED]", value)
+
+
+class JsonFormatter(logging.Formatter):
+    """Format log records as compact JSON objects."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        payload = {
+            "timestamp": self.formatTime(record, self.datefmt),
+            "level": record.levelname,
+            "logger": record.name,
+            "message": redact_sensitive(record.getMessage()),
+        }
+        for key in ("case_id", "unit", "attempt", "event_type"):
+            if hasattr(record, key):
+                payload[key] = getattr(record, key)
+        return json.dumps(payload, sort_keys=True)
+
+
+class RedactingFormatter(logging.Formatter):
+    """Format ordinary records while removing common key/value secrets."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        return redact_sensitive(super().format(record))
 
 
 class CaseLoggerAdapter(logging.LoggerAdapter):
@@ -21,7 +52,7 @@ class CaseLoggerAdapter(logging.LoggerAdapter):
             f"[case_id={extra.get('case_id', '-')} "
             f"unit={extra.get('unit', '-')} attempt={extra.get('attempt', 0)}]"
         )
-        return f"{prefix} {message}", kwargs
+        return redact_sensitive(f"{prefix} {message}"), kwargs
 
 
 def configure_logging(
@@ -30,6 +61,7 @@ def configure_logging(
     max_bytes: int = 10 * 1024 * 1024,
     backup_count: int = 3,
     stream: bool = True,
+    json_format: bool = False,
 ) -> logging.Logger:
     """Configure Labeeb handlers without modifying the application's root logger."""
     if max_bytes < 1 or backup_count < 0:
@@ -45,7 +77,7 @@ def configure_logging(
             logger.removeHandler(handler)
             handler.close()
 
-    formatter = logging.Formatter(_FORMAT)
+    formatter = JsonFormatter() if json_format else RedactingFormatter(_FORMAT)
     if stream:
         handler = logging.StreamHandler()
         setattr(handler, _HANDLER_MARKER, True)

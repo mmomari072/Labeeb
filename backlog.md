@@ -27,6 +27,12 @@ v1.3 adds typed `ExecutionEvent` records and JSON event export for API-driven
 case-study auditing. v1.4 unifies the legacy execution helper and adds
 incremental JSONL event persistence.
 
+v1.5 completes the API-first observability milestone: campaign lifecycle and
+failure events, retry-attempt correlation, optional stdout/stderr artifacts,
+secret redaction, JSON logging, and concurrent-safe JSONL appends.
+
+| **v1.5.0** | Comprehensive API observability and execution audit trail | Full suite green, redaction/lifecycle/retry/artifact/concurrency coverage, committed and pushed | In progress |
+
 ---
 
 ## 0. Release-Blocking Reliability Work

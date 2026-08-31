@@ -155,6 +155,10 @@ Each run also exposes a typed `ExecutionEvent`; use
 `export_execution_events()` to persist an auditable JSON event stream.
 For long-running campaigns, configure `execution.events_file` in the manifest
 to append each event incrementally as JSONL.
+Campaign streams include start, cache-hit, retry, command, success/failure,
+and completion events. Set `execution.capture_output` to retain per-case
+`stdout.log` and `stderr.log` artifacts. Use `json_format=True` for structured
+logs; common password, token, secret, and API-key values are redacted.
 
 ```python
 from labeeb.case import Case

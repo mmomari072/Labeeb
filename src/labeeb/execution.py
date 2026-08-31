@@ -1,13 +1,16 @@
 """Execution backend abstractions for simulation commands."""
 
-import logging
 import json
+import logging
+import os
 import subprocess
 import time
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Union
+
+from .logging_config import redact_sensitive
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +31,8 @@ class ExecutionEvent:
     case_id: Optional[int] = None
     unit: Optional[str] = None
     attempt: int = 0
+    event_type: str = "command"
+    message: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         """Return a JSON-compatible event mapping."""
@@ -161,7 +166,7 @@ class LocalExecutionBackend(ExecutionBackend):
     ) -> ExecutionEvent:
         context = getattr(self.command_logger, "extra", {})
         return ExecutionEvent(
-            command=command,
+            command=redact_sensitive(command),
             cwd=str(cwd),
             status=status or ("SUCCESS" if result.returncode == 0 else "FAILED"),
             returncode=result.returncode,
@@ -191,5 +196,9 @@ def append_execution_event(event: ExecutionEvent, path: Union[str, Path]) -> Non
     """Append one execution event to a JSON Lines event stream."""
     output = Path(path)
     output.parent.mkdir(parents=True, exist_ok=True)
-    with output.open("a", encoding="utf-8") as stream:
-        stream.write(json.dumps(event.to_dict(), sort_keys=True) + "\n")
+    payload = (json.dumps(event.to_dict(), sort_keys=True) + "\n").encode("utf-8")
+    descriptor = os.open(str(output), os.O_APPEND | os.O_CREAT | os.O_WRONLY, 0o644)
+    try:
+        os.write(descriptor, payload)
+    finally:
+        os.close(descriptor)
