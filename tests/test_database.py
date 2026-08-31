@@ -146,3 +146,23 @@ def test_database_legacy_methods():
     assert "col2" in local_namespace
     assert local_namespace["new_col"][0] == 10
 
+
+def test_database_derived_attribute_tracks_dependencies_and_recomputes():
+    db = Database(data={"y": [1, 2, 3]})
+
+    db.add_derived_attribute("x", lambda row: row["y"] + 1, dependencies=["y"])
+
+    assert list(db["x"]) == [2, 3, 4]
+    assert db.derived_attributes()["x"]["dependencies"] == ["y"]
+    db["y"] = [10, 20, 30]
+    assert list(db["x"]) == [11, 21, 31]
+
+
+def test_database_rejects_missing_and_circular_derived_dependencies():
+    db = Database(data={"y": [1]})
+    with pytest.raises(DatabaseError):
+        db.add_derived_attribute("x", lambda row: row["z"], dependencies=["z"])
+
+    db.add_derived_attribute("x", lambda row: row["y"], dependencies=["y"])
+    with pytest.raises(DatabaseError):
+        db.add_derived_attribute("y", lambda row: row["x"], dependencies=["x"])

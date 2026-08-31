@@ -443,6 +443,7 @@ class Database(dict):
         self.db_filepath: str = "./omari.pkl"
         self.auto_refresh: bool = False
         self.__selected_att__: List[str] = []
+        self._derived_specs: Dict[str, Dict[str, Any]] = {}
 
         if data:
             for key, val in data.items():
@@ -506,6 +507,61 @@ class Database(dict):
                 self[a.name] = a
         return self
 
+    def add_derived_attribute(
+        self,
+        name: str,
+        function: Callable[[Dict[str, Any]], Any],
+        dependencies: List[str],
+    ) -> "Database":
+        """Add a computed column evaluated from row values.
+
+        ``function`` receives a mapping of column names to values for one row.
+        Derived columns are recomputed when a source column is replaced.
+        """
+        if not isinstance(name, str) or not name:
+            raise DatabaseError("Derived attribute name must be a non-empty string")
+        if not callable(function):
+            raise DatabaseError("Derived attribute function must be callable")
+        if not dependencies or any(dep not in self or dep == "__db_index__" for dep in dependencies):
+            raise DatabaseError(f"Derived attribute '{name}' has missing dependencies")
+        if name in dependencies:
+            raise DatabaseError(f"Derived attribute '{name}' cannot depend on itself")
+        graph = {key: set(spec["dependencies"]) for key, spec in self._derived_specs.items()}
+        graph[name] = set(dependencies)
+        visiting: set = set()
+        visited: set = set()
+
+        def visit(node: str) -> None:
+            if node in visiting:
+                raise DatabaseError("Circular derived attribute dependency detected")
+            if node in visited:
+                return
+            visiting.add(node)
+            for dependency in graph.get(node, set()):
+                if dependency in graph:
+                    visit(dependency)
+            visiting.remove(node)
+            visited.add(node)
+
+        visit(name)
+        self._derived_specs[name] = {"function": function, "dependencies": list(dependencies)}
+        self[name] = self._evaluate_derived(name)
+        return self
+
+    def _evaluate_derived(self, name: str) -> Attribute:
+        spec = self._derived_specs[name]
+        row_count = self._get_max_column_length()
+        values = [spec["function"](self.get_row(index)) for index in range(row_count)]
+        if values and isinstance(values[0], (list, tuple, Attribute)):
+            values = list(values[0])
+        return Attribute(name=name, data=values, Type=None)
+
+    def _refresh_derived(self) -> None:
+        for name in self._derived_specs:
+            super().__setitem__(name, self._evaluate_derived(name))
+        if self._derived_specs:
+            self.refresh_index()
+
     def create_attribute(self, *names: str) -> "Database":
         """Create empty attribute columns by name."""
         for name in names:
@@ -526,6 +582,15 @@ class Database(dict):
         super().__setitem__(name, value)
         if getattr(self, "auto_refresh", False):
             self.refresh_index()
+            if name not in getattr(self, "_derived_specs", {}):
+                self._refresh_derived()
+
+    def derived_attributes(self) -> Dict[str, Dict[str, Any]]:
+        """Return metadata for computed columns without exposing callables."""
+        return {
+            name: {"dependencies": list(spec["dependencies"])}
+            for name, spec in self._derived_specs.items()
+        }
 
     def refresh_index(self) -> "Database":
         """Align all column lengths, padding short ones and updating the database index."""
