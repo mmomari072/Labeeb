@@ -177,3 +177,145 @@ def export_case_results(
     else:
         dataframe.to_parquet(output, index=False)
     return dataframe
+
+
+class StatusRegistry:
+    """Detailed registry and tracking store for case execution status, timing, and streams."""
+
+    def __init__(self) -> None:
+        self._entries: Dict[int, Dict[str, Any]] = {}
+
+    def record(
+        self,
+        case_id: int,
+        status: str,
+        exit_code: Optional[int] = None,
+        duration_seconds: Optional[float] = None,
+        stdout_status: Optional[str] = None,
+        stderr_status: Optional[str] = None,
+        stdout_bytes: int = 0,
+        stderr_bytes: int = 0,
+        error: Optional[str] = None,
+        **extra: Any,
+    ) -> Dict[str, Any]:
+        """Record or update execution status details for a case."""
+        if case_id < 0:
+            raise ValueError("case_id must be non-negative")
+        if not status:
+            raise ValueError("status must not be empty")
+
+        entry: Dict[str, Any] = {
+            "case_id": case_id,
+            "status": status.upper(),
+            "exit_code": exit_code,
+            "duration_seconds": duration_seconds,
+            "stdout_status": stdout_status,
+            "stderr_status": stderr_status,
+            "stdout_bytes": stdout_bytes,
+            "stderr_bytes": stderr_bytes,
+            "error": error,
+        }
+        if extra:
+            entry["extra"] = extra
+        self._entries[case_id] = entry
+        return entry
+
+    def record_result(self, result: CaseResult) -> Dict[str, Any]:
+        """Record status directly from a CaseResult instance."""
+        return self.record(
+            case_id=result.case_id,
+            status=result.status,
+            exit_code=result.exit_code,
+            duration_seconds=result.duration_seconds,
+            error=result.failure,
+            metrics=result.metrics,
+            artifacts=result.artifacts,
+        )
+
+    def get(self, case_id: int) -> Optional[Dict[str, Any]]:
+        """Get status entry for a specific case_id."""
+        return self._entries.get(case_id)
+
+    def __getitem__(self, case_id: int) -> Dict[str, Any]:
+        return self._entries[case_id]
+
+    def __len__(self) -> int:
+        return len(self._entries)
+
+    def __contains__(self, case_id: int) -> bool:
+        return case_id in self._entries
+
+    def __iter__(self):
+        return iter(self.all_entries())
+
+    def case_ids(self) -> List[int]:
+        """Return all tracked case IDs in ascending order."""
+        return sorted(self._entries.keys())
+
+    def all_entries(self) -> List[Dict[str, Any]]:
+        """Return all status records ordered by case_id."""
+        return [self._entries[cid] for cid in sorted(self._entries.keys())]
+
+    def filter_by_status(self, status: str) -> List[Dict[str, Any]]:
+        """Return entries matching a given status (case-insensitive)."""
+        target = status.upper()
+        return [e for e in self.all_entries() if e["status"] == target]
+
+    def successful_cases(self) -> List[int]:
+        """Return list of case IDs with SUCCESS status."""
+        return [e["case_id"] for e in self.filter_by_status("SUCCESS")]
+
+    def failed_cases(self) -> List[int]:
+        """Return list of case IDs with FAILED or TIMEOUT status."""
+        return [e["case_id"] for e in self.all_entries() if e["status"] in {"FAILED", "TIMEOUT"}]
+
+    def summary(self) -> Dict[str, int]:
+        """Return counts grouped by status."""
+        counts: Dict[str, int] = {}
+        for entry in self._entries.values():
+            s = entry["status"].lower()
+            counts[s] = counts.get(s, 0) + 1
+        return counts
+
+    def total_duration(self) -> float:
+        """Return sum of duration_seconds across all recorded cases."""
+        return sum(e["duration_seconds"] or 0.0 for e in self._entries.values())
+
+    def to_dataframe(self) -> pd.DataFrame:
+        """Convert registry entries to a pandas DataFrame."""
+        records = self.all_entries()
+        columns = [
+            "case_id", "status", "exit_code", "duration_seconds",
+            "stdout_status", "stderr_status", "stdout_bytes", "stderr_bytes", "error"
+        ]
+        if not records:
+            return pd.DataFrame(columns=columns)
+        df = pd.DataFrame(records)
+        if "extra" in df.columns:
+            df["extra"] = df["extra"].map(
+                lambda x: json.dumps(x, sort_keys=True) if isinstance(x, dict) else x
+            )
+        return df
+
+    def export(self, path: Union[str, Path]) -> pd.DataFrame:
+        """Export registry entries to CSV, JSON, or Parquet."""
+        output = Path(path)
+        suffix = output.suffix.lower()
+        if suffix not in {".csv", ".json", ".parquet"}:
+            raise ValueError("Export format must be .csv, .json, or .parquet")
+        df = self.to_dataframe()
+        output.parent.mkdir(parents=True, exist_ok=True)
+        if suffix == ".csv":
+            df.to_csv(output, index=False)
+        elif suffix == ".json":
+            df.to_json(output, orient="records", indent=2)
+        else:
+            df.to_parquet(output, index=False)
+        return df
+
+    def clear(self) -> None:
+        """Clear all recorded entries."""
+        self._entries.clear()
+
+
+ExecutionStatusRegistry = StatusRegistry
