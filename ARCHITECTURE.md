@@ -68,6 +68,11 @@ flowchart TD
 * **Safety Planning**: `wilks_sample_size()` computes one- and two-sided non-parametric tolerance sample sizes, including the standard 95/95 values of 59 and 93.
 * **Reports**: `write_html_report()` writes a self-contained case-status summary suitable for attaching to a campaign artifact directory.
 
+### 2.6 Public API Stability
+`labeeb.__all__` is the explicit supported import surface for v1.x. Campaign
+parameter rows are validated before execution, and incompatible API removals
+must wait for a major-version migration.
+
 ### 2.1 Database Subsystem (`labeeb.database`)
 * **Vectorized Column Operations**: The `Attribute` class provides element-wise numerical operations and logical masking.
 * **Storage Agnostic**: `Database` interfaces directly with `pandas.DataFrame` under the hood for serializing to and from CSV, Excel, Parquet, JSON, and Pickle.

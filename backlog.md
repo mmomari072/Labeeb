@@ -10,9 +10,14 @@ This document tracks the ongoing development roadmap, completed features, and up
 | **v0.3.0** | Campaign foundation: PF-001 through PF-006 | Manifest-to-results end-to-end campaign, resume/retry evidence, local backend and CLI documented | Released |
 | **v0.4.0** | API-first case studies and DOE foundation: PF-007 | Python Campaign runner, resumable case studies, seeded LHS and Halton designs | Released |
 | **v0.5.0** | UQ and reporting: PF-008 through PF-009 | Sensitivity validation, tolerance limits, reproducible HTML report API | Released |
-| **v1.0.0** | Stable production API | Compatibility freeze, migration policy, local/HPC workflow acceptance, tagged release | Planned |
+| **v1.0.0** | Stable production API | Compatibility freeze, migration policy, local workflow acceptance, tagged release | Released |
 
 Release status is evidence-based: an item is **implemented**, **tested**, **verified**, and **committed/pushed** separately. A release is not complete until all four states are recorded.
+
+v1.0 compatibility policy: names in `labeeb.__all__` and documented method
+signatures are stable for the 1.x series. Additions are backward compatible;
+removals or signature changes require a deprecation notice and a future major
+release.
 
 ---
 

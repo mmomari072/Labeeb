@@ -128,6 +128,9 @@ class Campaign:
     def __init__(self, manifest: CampaignManifest, state_path: Optional[Union[str, Path]] = None) -> None:
         if not isinstance(manifest, CampaignManifest):
             raise CampaignError("Campaign requires a validated CampaignManifest")
+        lengths = {len(values) for values in manifest.parameters.values()}
+        if len(lengths) != 1:
+            raise CampaignError("Campaign parameters must contain the same number of values")
         self.manifest = manifest
         self.state_path = Path(state_path) if state_path is not None else None
 

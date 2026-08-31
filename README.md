@@ -182,6 +182,11 @@ required_cases = wilks_sample_size(coverage=0.95, confidence=0.95, sides=1)
 write_html_report(results, "campaign_report.html")
 ```
 
+### B6. v1.0 API stability
+The supported public surface is the names exported by `labeeb.__all__`. The 1.x
+series preserves those names and documented signatures; incompatible changes
+require a future major version.
+
 ### C. Case Launcher & Templates (`labeeb.case` & `labeeb.utils.file_io`)
 Define templates, render inputs, execute runs, and parse output tables. Labeeb supports two template rendering options:
 

@@ -23,6 +23,7 @@ from .sampler import (
     halton_sample,
     latin_hypercube_sample,
     normal_sample,
+    product,
     sample,
     uniform_sample,
 )
@@ -30,8 +31,20 @@ from .results import CaseResult, CampaignStateStore, export_case_results
 from .report import write_html_report
 from .utils.file_io import File
 
-__version__ = "0.5.0"
+__version__ = "1.0.0"
 __author__ = "Mohammed Omari"
+
+__all__ = [
+    "AnalysisError", "Attribute", "Campaign", "CampaignError", "CampaignManifest",
+    "CampaignStateStore", "Case", "CaseExecutionError", "CaseResult", "Coupler",
+    "CouplingError", "Database", "DatabaseError", "DiscreteSampling", "ExecutionBackend",
+    "ExecutionResult", "ExtractionError", "FOATConstructor", "File", "Flag", "FlagsMap",
+    "LabeebError", "LocalExecutionBackend", "SamplingError", "correlation_analysis",
+    "export_case_results", "extract_csv", "extract_json", "extract_regex", "halton_sample",
+    "latin_hypercube_sample", "load_manifest", "morris_screening", "normal_sample", "product",
+    "run_extractor", "sample", "sobol_indices", "uniform_sample", "wilks_sample_size",
+    "write_html_report",
+]
 
 # Print nice banner on import
 print("*" * 80)
