@@ -31,7 +31,20 @@ v1.5 completes the API-first observability milestone: campaign lifecycle and
 failure events, retry-attempt correlation, optional stdout/stderr artifacts,
 secret redaction, JSON logging, and concurrent-safe JSONL appends.
 
-| **v1.5.0** | Comprehensive API observability and execution audit trail | Full suite green, redaction/lifecycle/retry/artifact/concurrency coverage, committed and pushed | In progress |
+| **v1.5.0** | Comprehensive API observability and execution audit trail | Full suite green, redaction/lifecycle/retry/artifact/concurrency coverage, committed and pushed | Released |
+| **v1.6.0** | Shareable campaign memory for online analysis | Redacted local bundle export, provider-neutral share interface, opt-in consent, integrity and privacy tests | Planned |
+
+### PF-010 — Shareable campaign memory for online analysis
+
+- [ ] Add an API-first `MemoryShare`/campaign bundle export containing the
+  manifest, provenance, parameters, case results, execution events, and opted-in
+  logs/artifacts.
+- [ ] Redact secrets by default and require explicit opt-in before any network
+  operation; preserve a local JSON/ZIP export that needs no provider.
+- [ ] Define a provider-neutral `share()` interface so online analysis services
+  can be added without coupling the core package to one vendor.
+- [ ] Add integrity metadata, privacy tests, and a case-study example showing
+  how an exported bundle can be consumed by an online analysis workflow.
 
 ---
 
