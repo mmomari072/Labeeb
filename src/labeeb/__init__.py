@@ -14,6 +14,7 @@ from .exceptions import (
     LabeebError,
     SamplingError,
 )
+from .execution import ExecutionBackend, ExecutionResult, LocalExecutionBackend
 from .sampler import (
     DiscreteSampling,
     FOATConstructor,

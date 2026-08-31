@@ -60,9 +60,10 @@ Implement these after the release blockers to make Labeeb suitable for repeatabl
   - Persist campaign state in SQLite or Parquet.
   - Resume incomplete campaigns, retry configured transient failures, and reuse cases with unchanged input hashes.
   - Completed: added SQLite-backed `CampaignStateStore` with durable attempts, pending-case discovery, retry budgets, and input-hash cache reuse.
-- [ ] **PF-004 — Pluggable execution backends**
+- [x] **PF-004 — Pluggable execution backends**
   - Separate execution from `Case` behind a backend interface.
   - Support local processes first, then SLURM/PBS job submission and containerized execution.
+  - Completed local foundation: added injectable `ExecutionBackend` and `LocalExecutionBackend`; scheduler/container backends remain follow-up extensions.
 - [ ] **PF-005 — Extensible output extractors**
   - Support CSV, JSON, regex/text, and user-supplied extractor functions.
   - Validate expected fields and units before admitting metrics into campaign results.

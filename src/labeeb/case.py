@@ -12,6 +12,7 @@ import pandas as pd
 from .coupled_unit import CoupledUnit
 from .database import Attribute, Database
 from .exceptions import CaseExecutionError
+from .execution import ExecutionBackend, LocalExecutionBackend
 from .utils import file_io, os_ops, progress
 
 logger = logging.getLogger(__name__)
@@ -176,6 +177,7 @@ class Case(CoupledUnit):
         self.attributes: List[str] = []
         self.FlagsMap: Union[FlagsMap, Dict[str, str]] = {}
         self.exe_cmd: List[str] = []
+        self.execution_backend: ExecutionBackend = LocalExecutionBackend()
         self.input_files: List[file_io.File] = []
 
         self.main_dir: str = os.getcwd()
@@ -454,8 +456,6 @@ class Case(CoupledUnit):
         return os_ops.isfile(stop_file)
 
     def _execute(self) -> List[int]:
-        previous_directory = os.getcwd()
-        self._cd(self.current_case_dir)
         exit_codes = []
         try:
             for cmd in self.exe_cmd:
@@ -470,7 +470,10 @@ class Case(CoupledUnit):
                 t_start = time.time()
                 t_stamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-                code = os_ops.execute(cmd, timeout=timeout, log_file=log_file)
+                result = self.execution_backend.run(
+                    cmd, cwd=self.current_case_dir, timeout=timeout, log_file=log_file
+                )
+                code = result.returncode
 
                 t_duration = time.time() - t_start
                 status_str = "SUCCESS" if code == 0 else ("TIMEOUT" if code == -999 else "FAILED")
@@ -481,7 +484,7 @@ class Case(CoupledUnit):
                     "exit_code": code,
                     "status": status_str,
                     "timestamp": t_stamp,
-                    "duration_seconds": round(t_duration, 3)
+                    "duration_seconds": round(result.duration_seconds or t_duration, 3)
                 })
 
                 if code != 0:
@@ -493,8 +496,6 @@ class Case(CoupledUnit):
         except Exception as e:
             logger.error(f"Error during simulation command execution: {e}")
             raise CaseExecutionError(f"Failed to execute simulation commands: {e}") from e
-        finally:
-            self._cd(previous_directory)
         return exit_codes
 
     def _cd(self, directory: str) -> "Case":

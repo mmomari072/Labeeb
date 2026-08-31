@@ -52,6 +52,10 @@ flowchart TD
 * **Failure Retention**: `export_case_results()` emits one case-indexed row per supplied result, preserving failures alongside successful results in CSV, JSON, or Parquet output.
 * **Campaign State**: `CampaignStateStore` persists attempts and result payloads in SQLite, identifies pending cases, enforces retry budgets, and reuses only successful results with matching input hashes.
 
+### 2.2 Execution Backend Subsystem (`labeeb.execution`)
+* **Backend Contract**: `ExecutionBackend.run()` separates command execution from `Case` orchestration.
+* **Local Backend**: `LocalExecutionBackend` provides cwd, timeout, logging, and normalized `ExecutionResult` behavior; scheduler and container implementations can be added without changing `Case`.
+
 ### 2.1 Database Subsystem (`labeeb.database`)
 * **Vectorized Column Operations**: The `Attribute` class provides element-wise numerical operations and logical masking.
 * **Storage Agnostic**: `Database` interfaces directly with `pandas.DataFrame` under the hood for serializing to and from CSV, Excel, Parquet, JSON, and Pickle.

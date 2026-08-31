@@ -123,6 +123,20 @@ with CampaignStateStore("campaign_state.sqlite") as state:
         print("reuse cached result")
 ```
 
+### B3. Execution Backends (`labeeb.execution`)
+`Case` uses an injectable execution backend. The built-in local backend runs
+shell commands with an explicit case directory, timeout, optional log file,
+and normalized `ExecutionResult`; scheduler backends can implement the same
+interface later.
+
+```python
+from labeeb.case import Case
+from labeeb.execution import LocalExecutionBackend
+
+case = Case("local")
+case.execution_backend = LocalExecutionBackend()
+```
+
 ### C. Case Launcher & Templates (`labeeb.case` & `labeeb.utils.file_io`)
 Define templates, render inputs, execute runs, and parse output tables. Labeeb supports two template rendering options:
 
