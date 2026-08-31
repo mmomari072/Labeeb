@@ -32,7 +32,7 @@ failure events, retry-attempt correlation, optional stdout/stderr artifacts,
 secret redaction, JSON logging, and concurrent-safe JSONL appends.
 
 | **v1.5.0** | Comprehensive API observability and execution audit trail | Full suite green, redaction/lifecycle/retry/artifact/concurrency coverage, committed and pushed | Released |
-| **v1.6.0** | Shareable campaign memory for online analysis | Redacted local bundle export, provider-neutral share interface, opt-in consent, integrity and privacy tests | Planned |
+| **v1.6.0** | Shareable campaign memory and live online analysis | Redacted bundle export, provider-neutral sharing, opt-in consent, non-blocking live figures, integrity and privacy tests | Planned |
 
 ### PF-010 — Shareable campaign memory for online analysis
 
@@ -45,6 +45,17 @@ secret redaction, JSON logging, and concurrent-safe JSONL appends.
   can be added without coupling the core package to one vendor.
 - [ ] Add integrity metadata, privacy tests, and a case-study example showing
   how an exported bundle can be consumed by an online analysis workflow.
+
+### PF-011 — Non-blocking live variable plots
+
+- [ ] Provide an API-first observer/stream for selected variables and derived
+  metrics while a campaign is executing.
+- [ ] Update online figures incrementally as results arrive without changing
+  simulation inputs, convergence decisions, scheduling, or failure handling.
+- [ ] Isolate plotting and network work from the execution path so a slow or
+  unavailable analysis client cannot pause or fail the campaign.
+- [ ] Support headless execution, bounded buffering, redacted data sharing, and
+  tests proving execution results are identical with plotting enabled or off.
 
 ---
 
