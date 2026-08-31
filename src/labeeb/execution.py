@@ -33,6 +33,11 @@ class ExecutionEvent:
         """Return a JSON-compatible event mapping."""
         return asdict(self)
 
+    @classmethod
+    def from_dict(cls, record: Dict[str, Any]) -> "ExecutionEvent":
+        """Rebuild an event from a JSON-compatible mapping."""
+        return cls(**record)
+
 
 @dataclass
 class ExecutionResult:
@@ -180,3 +185,11 @@ def export_execution_events(
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(records, indent=2, sort_keys=True), encoding="utf-8")
     return records
+
+
+def append_execution_event(event: ExecutionEvent, path: Union[str, Path]) -> None:
+    """Append one execution event to a JSON Lines event stream."""
+    output = Path(path)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    with output.open("a", encoding="utf-8") as stream:
+        stream.write(json.dumps(event.to_dict(), sort_keys=True) + "\n")

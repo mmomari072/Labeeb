@@ -177,38 +177,12 @@ def execute(
     Returns:
         Command return code (0 for success, -999 on timeout).
     """
-    previous_directory = pwd()
-    if wkdir:
-        chdir(wkdir)
+    from ..execution import LocalExecutionBackend
 
-    fid = None
-    try:
-        if log_file:
-            fid = open(log_file, "a", encoding="utf-8")
-            stdout_stream = fid
-            stderr_stream = fid
-        else:
-            stdout_stream = None
-            stderr_stream = None
-
-        result = subprocess.run(
-            command,
-            shell=True,
-            stdout=stdout_stream,
-            stderr=stderr_stream,
-            timeout=timeout,
-        )
-        return result.returncode
-    except subprocess.TimeoutExpired as e:
-        logger.error(f"Command '{command}' timed out after {timeout} seconds.")
-        if fid:
-            fid.write(f"\n[ERROR] Command timed out after {timeout} seconds.\n")
-        return -999
-    except Exception as e:
-        logger.error(f"Execution of command failed: {e}")
-        return -1
-    finally:
-        if fid:
-            fid.close()
-        if wkdir:
-            chdir(previous_directory)
+    result = LocalExecutionBackend().run(
+        command,
+        cwd=wkdir or pwd(),
+        timeout=timeout,
+        log_file=log_file,
+    )
+    return result.returncode

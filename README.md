@@ -153,6 +153,8 @@ completion/exit code, duration, timeout, and launch errors through the
 `labeeb.execution` logger. Scheduler backends can implement the same interface.
 Each run also exposes a typed `ExecutionEvent`; use
 `export_execution_events()` to persist an auditable JSON event stream.
+For long-running campaigns, configure `execution.events_file` in the manifest
+to append each event incrementally as JSONL.
 
 ```python
 from labeeb.case import Case

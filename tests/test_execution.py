@@ -4,7 +4,13 @@ from pathlib import Path
 
 from labeeb.case import Case
 from labeeb.database import Database
-from labeeb.execution import ExecutionResult, LocalExecutionBackend, export_execution_events
+from labeeb.execution import (
+    ExecutionResult,
+    LocalExecutionBackend,
+    append_execution_event,
+    export_execution_events,
+)
+from labeeb.utils.os_ops import execute
 from labeeb.logging_config import CaseLoggerAdapter
 
 
@@ -48,6 +54,13 @@ def test_local_execution_backend_preserves_case_context(tmp_path, caplog):
     assert record.attempt == 1
 
 
+def test_legacy_os_execute_uses_same_command_logging(tmp_path, caplog):
+    with caplog.at_level("INFO", logger="labeeb.execution"):
+        assert execute("printf legacy", wkdir=str(tmp_path)) == 0
+
+    assert any("Starting command 'printf legacy'" in record.getMessage() for record in caplog.records)
+
+
 def test_execution_result_contains_typed_event_and_can_export_json(tmp_path):
     result = LocalExecutionBackend().run("printf done", cwd=tmp_path)
 
@@ -58,6 +71,15 @@ def test_execution_result_contains_typed_event_and_can_export_json(tmp_path):
     output = export_execution_events([result.event], tmp_path / "events.json")
     assert output[0]["status"] == "SUCCESS"
     assert '"stdout_bytes": 4' in (tmp_path / "events.json").read_text(encoding="utf-8")
+
+
+def test_execution_events_can_be_appended_as_jsonl(tmp_path):
+    event = LocalExecutionBackend().run("true", cwd=tmp_path).event
+
+    append_execution_event(event, tmp_path / "events.jsonl")
+    append_execution_event(event, tmp_path / "events.jsonl")
+
+    assert len((tmp_path / "events.jsonl").read_text(encoding="utf-8").splitlines()) == 2
 
 
 def test_case_accepts_injected_execution_backend(tmp_path):

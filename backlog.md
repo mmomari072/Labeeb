@@ -24,7 +24,8 @@ handlers, and contextual command records; CLI verbosity flags remain secondary
 follow-up work.
 
 v1.3 adds typed `ExecutionEvent` records and JSON event export for API-driven
-case-study auditing.
+case-study auditing. v1.4 unifies the legacy execution helper and adds
+incremental JSONL event persistence.
 
 ---
 

@@ -215,6 +215,16 @@ class Campaign:
                     result = CaseResult(
                         case_id, parameters, "FAILED", None, time.monotonic() - started, failure=str(exc)
                     )
+                events_file = self.manifest.execution.get("events_file")
+                if events_file and case.execution_history:
+                    from .execution import ExecutionEvent, append_execution_event
+
+                    event_record = case.execution_history[-1].get("execution_event")
+                    if event_record:
+                        event_path = Path(events_file)
+                        if not event_path.is_absolute():
+                            event_path = Path(case.main_dir) / event_path
+                        append_execution_event(ExecutionEvent.from_dict(event_record), event_path)
                 if state is not None:
                     state.save(result, input_hash)
                 results.append(result)

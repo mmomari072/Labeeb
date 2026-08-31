@@ -44,3 +44,23 @@ def test_campaign_state_reuses_successful_cases(tmp_path: Path) -> None:
 
     assert first[0].status == second[0].status == "SUCCESS"
     assert not marker.exists()
+
+
+def test_campaign_persists_execution_events_incrementally(tmp_path: Path) -> None:
+    template = tmp_path / "input.deck"
+    template.write_text("value=#VALUE#\n", encoding="utf-8")
+    events_path = tmp_path / "runs" / "events.jsonl"
+    manifest = CampaignManifest.from_dict(
+        {
+            "name": "event-study",
+            "parameters": {"VALUE": [1, 2]},
+            "templates": [str(template)],
+            "commands": ["true"],
+            "execution": {"run_dir": str(tmp_path / "runs"), "events_file": str(events_path)},
+        }
+    )
+
+    results = Campaign(manifest).run()
+
+    assert len(results) == 2
+    assert len(events_path.read_text(encoding="utf-8").splitlines()) == 2
