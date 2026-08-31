@@ -169,6 +169,19 @@ labeeb status campaign_state.sqlite
 labeeb resume campaign_state.sqlite
 ```
 
+### B5. Sensitivity and Reports (`labeeb.analysis`, `labeeb.report`)
+The analysis APIs operate directly on arrays, mappings, or pandas tables and do
+not require SciPy. They cover rank/linear correlation, Morris screening,
+Saltelli-style Sobol estimates, and Wilks sample-size planning.
+
+```python
+from labeeb import correlation_analysis, wilks_sample_size, write_html_report
+
+correlations = correlation_analysis({"rho": [1, 2, 3]}, [2, 5, 7])
+required_cases = wilks_sample_size(coverage=0.95, confidence=0.95, sides=1)
+write_html_report(results, "campaign_report.html")
+```
+
 ### C. Case Launcher & Templates (`labeeb.case` & `labeeb.utils.file_io`)
 Define templates, render inputs, execute runs, and parse output tables. Labeeb supports two template rendering options:
 

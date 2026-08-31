@@ -63,6 +63,11 @@ flowchart TD
 ### 2.4 CLI Subsystem (`labeeb.cli`)
 * **Configuration Workflow**: `validate`, `run`, `status`, and `resume` expose manifest-driven local campaigns and persisted state without coupling the command parser to future scheduler backends.
 
+### 2.5 Analysis and Reporting Subsystems (`labeeb.analysis`, `labeeb.report`)
+* **Sensitivity**: Dependency-light Pearson/Spearman correlations, Morris elementary effects, and Saltelli-form Sobol first/total estimates validate numeric inputs and shapes.
+* **Safety Planning**: `wilks_sample_size()` computes one- and two-sided non-parametric tolerance sample sizes, including the standard 95/95 values of 59 and 93.
+* **Reports**: `write_html_report()` writes a self-contained case-status summary suitable for attaching to a campaign artifact directory.
+
 ### 2.1 Database Subsystem (`labeeb.database`)
 * **Vectorized Column Operations**: The `Attribute` class provides element-wise numerical operations and logical masking.
 * **Storage Agnostic**: `Database` interfaces directly with `pandas.DataFrame` under the hood for serializing to and from CSV, Excel, Parquet, JSON, and Pickle.

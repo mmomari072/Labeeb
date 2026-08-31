@@ -15,6 +15,7 @@ from .exceptions import (
     SamplingError,
 )
 from .execution import ExecutionBackend, ExecutionResult, LocalExecutionBackend
+from .analysis import AnalysisError, correlation_analysis, morris_screening, sobol_indices, wilks_sample_size
 from .extractors import ExtractionError, extract_csv, extract_json, extract_regex, run_extractor
 from .sampler import (
     DiscreteSampling,
@@ -26,9 +27,10 @@ from .sampler import (
     uniform_sample,
 )
 from .results import CaseResult, CampaignStateStore, export_case_results
+from .report import write_html_report
 from .utils.file_io import File
 
-__version__ = "0.4.0"
+__version__ = "0.5.0"
 __author__ = "Mohammed Omari"
 
 # Print nice banner on import
