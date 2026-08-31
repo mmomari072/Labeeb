@@ -6,8 +6,8 @@ This document tracks the ongoing development roadmap, completed features, and up
 
 | Release | Milestone scope | Release gate | Status |
 |---|---|---|---|
-| **v0.2.2** | Reliability: BL-001 through BL-005 | Full suite green, compatibility CI, no silent failures/skips, committed and pushed | In progress |
-| **v0.3.0** | Campaign foundation: PF-001 through PF-006 | Manifest-to-results end-to-end campaign, resume/retry evidence, local backend and CLI documented | Ready for release |
+| **v0.2.2** | Reliability: BL-001 through BL-005 | Full suite green, compatibility CI, no silent failures/skips, committed and pushed | Released |
+| **v0.3.0** | Campaign foundation: PF-001 through PF-006 | Manifest-to-results end-to-end campaign, resume/retry evidence, local backend and CLI documented | Released |
 | **v0.4.0** | UQ and reporting: PF-007 through PF-009 | Seeded sampling, sensitivity validation, reproducible HTML/PDF report example | Planned |
 | **v1.0.0** | Stable production API | Compatibility freeze, migration policy, local/HPC workflow acceptance, tagged release | Planned |
 
