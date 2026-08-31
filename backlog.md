@@ -52,9 +52,10 @@ Implement these after the release blockers to make Labeeb suitable for repeatabl
   - Define campaigns in validated YAML or JSON, including parameter space, templates, commands, random seed, and execution settings.
   - Record input-deck hashes, executable/environment metadata, package version, and timestamps for every case.
   - Completed: added validated JSON/YAML `CampaignManifest`, deterministic manifest/template hashes, executable discovery metadata, and regression tests.
-- [ ] **PF-002 — Structured, case-indexed results**
+- [x] **PF-002 — Structured, case-indexed results**
   - Introduce a `CaseResult` model containing parameters, status, exit code, duration, artifact paths, parsed metrics, and failure details.
   - Export a single case-indexed result table; retain failure records alongside successful results.
+  - Completed: added `CaseResult` and CSV/JSON/Parquet export while retaining failed cases in the result table.
 - [ ] **PF-003 — Resume, retry, and result caching**
   - Persist campaign state in SQLite or Parquet.
   - Resume incomplete campaigns, retry configured transient failures, and reuse cases with unchanged input hashes.

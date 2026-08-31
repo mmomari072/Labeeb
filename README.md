@@ -101,6 +101,17 @@ campaign = load_manifest("campaign.yml")
 print(campaign.provenance()["manifest_sha256"])
 ```
 
+### B2. Structured Results (`labeeb.results`)
+`CaseResult` retains parameters, execution status, exit code, duration, artifacts,
+metrics, and failure details for every case, including failed cases.
+
+```python
+from labeeb.results import CaseResult, export_case_results
+
+results = [CaseResult(0, {"RHO": 19.0}, "SUCCESS", 0, 1.2, metrics={"keff": 1.0})]
+export_case_results(results, "campaign_results.csv")
+```
+
 ### C. Case Launcher & Templates (`labeeb.case` & `labeeb.utils.file_io`)
 Define templates, render inputs, execute runs, and parse output tables. Labeeb supports two template rendering options:
 
