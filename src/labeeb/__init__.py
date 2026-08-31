@@ -21,7 +21,7 @@ from .sampler import (
     sample,
     uniform_sample,
 )
-from .results import CaseResult, export_case_results
+from .results import CaseResult, CampaignStateStore, export_case_results
 from .utils.file_io import File
 
 __version__ = "0.2.2"

@@ -112,6 +112,17 @@ results = [CaseResult(0, {"RHO": 19.0}, "SUCCESS", 0, 1.2, metrics={"keff": 1.0}
 export_case_results(results, "campaign_results.csv")
 ```
 
+`CampaignStateStore` persists attempts for resume/retry workflows and prevents
+cache reuse when the input hash changes.
+
+```python
+from labeeb.results import CampaignStateStore
+
+with CampaignStateStore("campaign_state.sqlite") as state:
+    if state.should_reuse(case_id=0, input_hash=input_hash):
+        print("reuse cached result")
+```
+
 ### C. Case Launcher & Templates (`labeeb.case` & `labeeb.utils.file_io`)
 Define templates, render inputs, execute runs, and parse output tables. Labeeb supports two template rendering options:
 

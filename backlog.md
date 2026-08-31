@@ -56,9 +56,10 @@ Implement these after the release blockers to make Labeeb suitable for repeatabl
   - Introduce a `CaseResult` model containing parameters, status, exit code, duration, artifact paths, parsed metrics, and failure details.
   - Export a single case-indexed result table; retain failure records alongside successful results.
   - Completed: added `CaseResult` and CSV/JSON/Parquet export while retaining failed cases in the result table.
-- [ ] **PF-003 — Resume, retry, and result caching**
+- [x] **PF-003 — Resume, retry, and result caching**
   - Persist campaign state in SQLite or Parquet.
   - Resume incomplete campaigns, retry configured transient failures, and reuse cases with unchanged input hashes.
+  - Completed: added SQLite-backed `CampaignStateStore` with durable attempts, pending-case discovery, retry budgets, and input-hash cache reuse.
 - [ ] **PF-004 — Pluggable execution backends**
   - Separate execution from `Case` behind a backend interface.
   - Support local processes first, then SLURM/PBS job submission and containerized execution.

@@ -50,6 +50,7 @@ flowchart TD
 ### 2.1 Results Subsystem (`labeeb.results`)
 * **Case Records**: `CaseResult` stores parameters, status, exit code, duration, artifacts, metrics, and failure details for each case.
 * **Failure Retention**: `export_case_results()` emits one case-indexed row per supplied result, preserving failures alongside successful results in CSV, JSON, or Parquet output.
+* **Campaign State**: `CampaignStateStore` persists attempts and result payloads in SQLite, identifies pending cases, enforces retry budgets, and reuses only successful results with matching input hashes.
 
 ### 2.1 Database Subsystem (`labeeb.database`)
 * **Vectorized Column Operations**: The `Attribute` class provides element-wise numerical operations and logical masking.
