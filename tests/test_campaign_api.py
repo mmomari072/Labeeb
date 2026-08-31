@@ -144,3 +144,33 @@ def test_campaign_marks_completion_failed_when_a_case_fails(tmp_path: Path) -> N
     assert events[-2]["event_type"] == "case_failure"
     assert events[-1]["event_type"] == "campaign_complete"
     assert events[-1]["status"] == "FAILED"
+
+
+def test_campaign_integrates_status_registry_and_exports_status(tmp_path: Path) -> None:
+    template = tmp_path / "input.deck"
+    template.write_text("value=#VALUE#\n", encoding="utf-8")
+    status_csv = tmp_path / "campaign_status.csv"
+    manifest = CampaignManifest.from_dict(
+        {
+            "name": "status-registry-study",
+            "parameters": {"VALUE": [10, 20]},
+            "templates": [str(template)],
+            "commands": ["true"],
+            "execution": {"run_dir": str(tmp_path / "runs")},
+        }
+    )
+
+    campaign = Campaign(manifest)
+    assert len(campaign.status_registry) == 0
+
+    results = campaign.run()
+    assert len(results) == 2
+    assert len(campaign.status_registry) == 2
+    assert campaign.status_registry.successful_cases() == [0, 1]
+    assert campaign.status() == {"success": 2}
+
+    df = campaign.export_status(status_csv)
+    assert status_csv.exists()
+    assert len(df) == 2
+    assert "case_id" in df.columns
+    assert "status" in df.columns

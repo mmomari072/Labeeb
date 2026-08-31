@@ -126,7 +126,12 @@ class Campaign:
     command-line interface is only a thin adapter around this class.
     """
 
-    def __init__(self, manifest: CampaignManifest, state_path: Optional[Union[str, Path]] = None) -> None:
+    def __init__(
+        self,
+        manifest: CampaignManifest,
+        state_path: Optional[Union[str, Path]] = None,
+        status_registry: Optional[Any] = None,
+    ) -> None:
         if not isinstance(manifest, CampaignManifest):
             raise CampaignError("Campaign requires a validated CampaignManifest")
         lengths = {len(values) for values in manifest.parameters.values()}
@@ -134,11 +139,18 @@ class Campaign:
             raise CampaignError("Campaign parameters must contain the same number of values")
         self.manifest = manifest
         self.state_path = Path(state_path) if state_path is not None else None
+        from .results import StatusRegistry
+
+        self.status_registry = status_registry if status_registry is not None else StatusRegistry()
 
     @classmethod
     def from_manifest(cls, path: Union[str, Path], state_path: Optional[Union[str, Path]] = None) -> "Campaign":
         """Load a manifest and return an executable campaign object."""
         return cls(load_manifest(path), state_path=state_path)
+
+    def export_status(self, path: Union[str, Path]) -> Any:
+        """Export the campaign's status registry to CSV, JSON, or Parquet."""
+        return self.status_registry.export(path)
 
     def build_case(self) -> "Case":
         """Build a configured :class:`Case` for this campaign."""
@@ -192,7 +204,9 @@ class Campaign:
         return hashlib.sha256(json.dumps(payload, sort_keys=True, default=str).encode("utf-8")).hexdigest()
 
     def status(self) -> Dict[str, int]:
-        """Return persisted status counts, or an empty status for new runs."""
+        """Return status counts from the in-memory registry or persisted state."""
+        if len(self.status_registry) > 0:
+            return self.status_registry.summary()
         if self.state_path is None:
             return {}
         with self._state() as state:
@@ -225,10 +239,14 @@ class Campaign:
                 persisted = state.get(case_id) if state is not None else None
                 if resume and state is not None and state.should_reuse(case_id, input_hash):
                     self._append_lifecycle_event("case_cache_hit", run_root, case_id=case_id, status="SKIPPED")
-                    results.append(CaseResult.from_record(persisted["result"]))
+                    cached_result = CaseResult.from_record(persisted["result"])
+                    self.status_registry.record_result(cached_result)
+                    results.append(cached_result)
                     continue
                 if state is not None and persisted is not None and not state.retry_allowed(case_id, max_retries):
-                    results.append(CaseResult.from_record(persisted["result"]))
+                    persisted_result = CaseResult.from_record(persisted["result"])
+                    self.status_registry.record_result(persisted_result)
+                    results.append(persisted_result)
                     continue
 
                 started = time.monotonic()
@@ -258,6 +276,7 @@ class Campaign:
                 )
                 if result.status != "SUCCESS":
                     campaign_status = "FAILED"
+                self.status_registry.record_result(result)
                 if state is not None:
                     state.save(result, input_hash)
                 results.append(result)
