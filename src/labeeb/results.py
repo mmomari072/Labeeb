@@ -27,6 +27,7 @@ class CaseResult:
             raise ValueError("case_id must be non-negative")
         if not self.status:
             raise ValueError("status must not be empty")
+        self.status = self.status.upper()
 
     def to_record(self) -> Dict[str, Any]:
         """Return the complete structured record for this case."""
@@ -222,15 +223,16 @@ class StatusRegistry:
 
     def record_result(self, result: CaseResult) -> Dict[str, Any]:
         """Record status directly from a CaseResult instance."""
-        return self.record(
+        entry = self.record(
             case_id=result.case_id,
             status=result.status,
             exit_code=result.exit_code,
             duration_seconds=result.duration_seconds,
             error=result.failure,
-            metrics=result.metrics,
-            artifacts=result.artifacts,
         )
+        entry["metrics"] = dict(result.metrics)
+        entry["artifacts"] = dict(result.artifacts)
+        return entry
 
     def get(self, case_id: int) -> Optional[Dict[str, Any]]:
         """Get status entry for a specific case_id."""
@@ -286,15 +288,17 @@ class StatusRegistry:
         records = self.all_entries()
         columns = [
             "case_id", "status", "exit_code", "duration_seconds",
-            "stdout_status", "stderr_status", "stdout_bytes", "stderr_bytes", "error"
+            "stdout_status", "stderr_status", "stdout_bytes", "stderr_bytes", "error",
+            "metrics", "artifacts",
         ]
         if not records:
             return pd.DataFrame(columns=columns)
         df = pd.DataFrame(records)
-        if "extra" in df.columns:
-            df["extra"] = df["extra"].map(
-                lambda x: json.dumps(x, sort_keys=True) if isinstance(x, dict) else x
-            )
+        for column in ("extra", "metrics", "artifacts"):
+            if column in df.columns:
+                df[column] = df[column].map(
+                    lambda x: json.dumps(x, sort_keys=True) if isinstance(x, dict) else x
+                )
         return df
 
     def export(self, path: Union[str, Path]) -> pd.DataFrame:

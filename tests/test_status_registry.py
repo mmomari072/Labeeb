@@ -2,7 +2,7 @@ from pathlib import Path
 import pytest
 import pandas as pd
 
-from labeeb.results import CaseResult, ExecutionStatusRegistry, StatusRegistry
+from labeeb.results import CampaignStateStore, CaseResult, ExecutionStatusRegistry, StatusRegistry
 
 
 def test_status_registry_record_and_lookup():
@@ -102,3 +102,74 @@ def test_status_registry_to_dataframe_and_export(tmp_path: Path):
 
     with pytest.raises(ValueError, match="format"):
         reg.export(tmp_path / "status.txt")
+
+
+def test_case_result_normalizes_status_and_round_trips():
+    result = CaseResult(3, {"x": 1.5}, "success", 0, 2.5, failure=None)
+    assert result.status == "SUCCESS"
+    restored = CaseResult.from_record(result.to_record())
+    assert restored == result
+
+
+def test_record_result_flattens_metrics_and_artifacts():
+    reg = StatusRegistry()
+    result = CaseResult(7, {"x": 1}, "SUCCESS", 0, 1.0, metrics={"k": 1}, artifacts={"f": "x"})
+    entry = reg.record_result(result)
+    assert entry["metrics"] == {"k": 1}
+    assert entry["artifacts"] == {"f": "x"}
+    assert "extra" not in entry
+    df = reg.to_dataframe()
+    assert "metrics" in df.columns
+    assert "artifacts" in df.columns
+    assert df.loc[0, "metrics"] == '{"k": 1}'
+    assert df.loc[0, "artifacts"] == '{"f": "x"}'
+
+
+def test_campaign_state_store_lifecycle(tmp_path: Path):
+    store = CampaignStateStore(tmp_path / "state.db")
+    try:
+        store.save(CaseResult(0, {"x": 1}, "SUCCESS", 0, 1.0), "hash-a")
+        store.save(CaseResult(1, {"x": 2}, "FAILED", 1, 0.5, failure="boom"), "hash-b")
+        store.save(CaseResult(0, {"x": 1}, "SUCCESS", 0, 1.2), "hash-a")
+
+        state = store.get(0)
+        assert state is not None
+        assert state["attempts"] == 2
+        assert state["status"] == "SUCCESS"
+        assert state["result"]["case_id"] == 0
+        assert store.get(99) is None
+
+        assert store.pending([0, 1]) == [1]
+        assert store.pending([0, 5]) == [5]
+        assert store.should_reuse(0, "hash-a") is True
+        assert store.should_reuse(0, "hash-zz") is False
+        assert store.should_reuse(1, "hash-b") is False
+        assert store.retry_allowed(99, 3) is True
+        assert store.retry_allowed(0, 1) is False
+        assert store.retry_allowed(0, 3) is True
+        assert store.summary() == {"success": 1, "failed": 1}
+        assert store.case_ids() == [0, 1]
+    finally:
+        store.close()
+
+
+def test_campaign_state_store_normalizes_lowercase_status(tmp_path: Path):
+    store = CampaignStateStore(tmp_path / "state2.db")
+    try:
+        store.save(CaseResult(0, {"x": 1}, "success", 0, 1.0), "h")
+        state = store.get(0)
+        assert state is not None
+        assert state["status"] == "SUCCESS"
+        assert store.pending([0]) == []
+        assert store.should_reuse(0, "h") is True
+    finally:
+        store.close()
+
+
+def test_campaign_state_store_retry_budget_validation(tmp_path: Path):
+    store = CampaignStateStore(tmp_path / "state3.db")
+    try:
+        with pytest.raises(ValueError, match="max_retries"):
+            store.retry_allowed(0, 0)
+    finally:
+        store.close()
