@@ -60,26 +60,29 @@ class InMemorySharedBackend(SharedMemoryBackend):
 
     def set(self, key: str, value: Any) -> None:
         with self._lock:
-            self._storage[key] = value
+            copied = deepcopy(value)
+            self._storage[key] = copied
             subscribers = list(self._subscribers)
         for callback in subscribers:
             try:
-                callback(key, value)
+                callback(key, deepcopy(copied))
             except Exception:
                 pass
 
     def get(self, key: str, default: Any = None) -> Any:
         with self._lock:
-            return self._storage.get(key, default)
+            val = self._storage.get(key, default)
+            return deepcopy(val)
 
     def update(self, mapping: Dict[str, Any]) -> None:
         with self._lock:
-            self._storage.update(mapping)
+            copied_mapping = {k: deepcopy(v) for k, v in mapping.items()}
+            self._storage.update(copied_mapping)
             subscribers = list(self._subscribers)
-        for key, value in mapping.items():
+        for key, value in copied_mapping.items():
             for callback in subscribers:
                 try:
-                    callback(key, value)
+                    callback(key, deepcopy(value))
                 except Exception:
                     pass
 
