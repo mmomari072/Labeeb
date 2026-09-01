@@ -61,7 +61,7 @@ from .report import write_html_report
 from .logging_config import CaseLoggerAdapter, configure_logging
 from .utils.file_io import File
 
-__version__ = "1.5.0"
+__version__ = "1.6.0"
 __author__ = "Mohammed Omari"
 
 __all__ = [

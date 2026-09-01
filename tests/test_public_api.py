@@ -5,7 +5,7 @@ from labeeb.campaign import Campaign, CampaignError, CampaignManifest
 
 
 def test_public_api_is_explicit_and_versioned():
-    assert labeeb.__version__ == "1.5.0"
+    assert labeeb.__version__ == "1.6.0"
     assert "Campaign" in labeeb.__all__
     assert all(hasattr(labeeb, name) for name in labeeb.__all__)
     assert labeeb.StatusRegistry is labeeb.ExecutionStatusRegistry
