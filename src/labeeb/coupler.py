@@ -9,7 +9,7 @@ import os
 from typing import Any, Callable, Dict, List, Optional, Union
 
 from .case import Case
-from .coupled_unit import CoupledUnit
+from .coupled_unit import CoupledUnit, ConvergenceResult
 from .database import Database
 from .exceptions import CouplingError
 from .utils import os_ops, progress
@@ -83,6 +83,11 @@ class Coupler(CoupledUnit, dict):
         self._unit_max_exec: Dict[str, int] = {}
         self._unit_check_fn: Dict[str, Callable[..., bool]] = {}
 
+        self._relaxation_factors: Dict[str, float] = {}
+        self._previous_values: Dict[str, Any] = {}
+        self._divergence_detectors: List[Callable[..., bool]] = []
+        self._divergence_thresholds: Dict[str, float] = {}
+
         self.main_dir: str = os.getcwd()
         self.run_case_main_dir: str = "coupling_omari_test"
         self.run_case_sub_dir: str = "coupling_iteration"
@@ -113,6 +118,116 @@ class Coupler(CoupledUnit, dict):
                 self.main_dir = val
             else:
                 logger.warning(f"Coupler parameter '{key}' is not supported")
+
+    def set_under_relaxation(self, attribute: str, factor: float) -> "Coupler":
+        """
+        Set an under-relaxation factor omega in (0, 1] for a specific attribute.
+        """
+        if factor <= 0.0 or factor > 1.0:
+            raise ValueError(
+                f"Under-relaxation factor for '{attribute}' must be in (0, 1], got {factor}"
+            )
+        self._relaxation_factors[attribute] = float(factor)
+        return self
+
+    def get_under_relaxation(self, attribute: str) -> float:
+        """Get the configured under-relaxation factor for an attribute (default: 1.0)."""
+        return self._relaxation_factors.get(attribute, 1.0)
+
+    def relax(self, attribute: str, new_value: float, old_value: Optional[float] = None) -> float:
+        """
+        Apply under-relaxation to a value:
+        relaxed = omega * new_value + (1 - omega) * old_value
+        """
+        omega = self.get_under_relaxation(attribute)
+        if old_value is None:
+            if attribute in self._previous_values:
+                old_val = self._previous_values[attribute]
+            else:
+                self._previous_values[attribute] = new_value
+                return new_value
+        else:
+            old_val = old_value
+
+        relaxed = omega * float(new_value) + (1.0 - omega) * float(old_val)
+        self._previous_values[attribute] = relaxed
+        return relaxed
+
+    def add_divergence_detector(self, *funcs: Callable[..., bool]) -> "Coupler":
+        """Add custom callback(s) that return True if coupling divergence is detected."""
+        for f in funcs:
+            if f not in self._divergence_detectors:
+                self._divergence_detectors.append(f)
+        return self
+
+    def set_divergence_threshold(self, attribute: str, max_allowed: float) -> "Coupler":
+        """Set a maximum allowable numerical threshold for an attribute before aborting due to divergence."""
+        self._divergence_thresholds[attribute] = float(max_allowed)
+        return self
+
+    def check_divergence(self) -> None:
+        """
+        Evaluate configured divergence detectors and thresholds.
+        Raises CouplingError immediately if divergence is detected.
+        """
+        for detector in self._divergence_detectors:
+            try:
+                if detector(self):
+                    detector_name = getattr(detector, "__name__", "custom_detector")
+                    raise CouplingError(
+                        f"Coupling divergence detected by detector '{detector_name}' "
+                        f"in Coupler '{self.name}' at step {self.c_step}"
+                    )
+            except CouplingError:
+                raise
+            except Exception as e:
+                raise CouplingError(
+                    f"Coupling divergence check failed in Coupler '{self.name}': {e}"
+                ) from e
+
+        if self.database and self.c_step is not None:
+            row = self.database.get_row(self.c_step)
+            for att, limit in self._divergence_thresholds.items():
+                val = row.get(att)
+                if val is not None and isinstance(val, (int, float)):
+                    if abs(val) > limit:
+                        raise CouplingError(
+                            f"Coupling divergence detected in Coupler '{self.name}' at step {self.c_step}: "
+                            f"attribute '{att}' value {val} exceeds threshold {limit}"
+                        )
+
+    def run_to_convergence(
+        self,
+        max_exec: Optional[int] = None,
+        check_fn: Optional[Callable[..., bool]] = None,
+        error_on_max_exec: bool = False,
+        **kwargs: Any,
+    ) -> ConvergenceResult:
+        """
+        Repeatedly call `_run_once` until `check_fn(self, **kwargs)` returns
+        True or `max_exec` attempts are used. If `error_on_max_exec` is True and
+        convergence is not achieved within `max_exec` passes, raises CouplingError.
+        """
+        n = max_exec if max_exec is not None else self.default_max_exec
+        unit_name = getattr(self, "name", self.__class__.__name__)
+
+        for i in range(n):
+            self._run_once(_attempt=i, **kwargs)
+
+            converged = True if check_fn is None else bool(check_fn(self, **kwargs))
+            if converged:
+                result = ConvergenceResult(unit=unit_name, converged=True, executions=i + 1)
+                self.last_convergence = result
+                return result
+
+        logger.warning(f"'{unit_name}' did not converge within max_exec={n} executions.")
+        if error_on_max_exec:
+            raise CouplingError(
+                f"Coupler '{unit_name}' failed to converge within max_exec={n} executions."
+            )
+        result = ConvergenceResult(unit=unit_name, converged=False, executions=n)
+        self.last_convergence = result
+        return result
 
     def add_case(
         self,
@@ -250,6 +365,8 @@ class Coupler(CoupledUnit, dict):
         step. Used both directly and as the repeated pass inside
         `run_to_convergence()` for overall coupling convergence.
         """
+        if self.c_step is None:
+            self.c_step = 0
         idx = self.c_step
         # `_attempt` (set by run_to_convergence's repeated passes) keeps
         # repeated overall-coupling-convergence passes over the same
@@ -294,6 +411,7 @@ class Coupler(CoupledUnit, dict):
         # reached its own convergence (or exhausted its max_exec) --
         # see CoupledUnit's parent/child convergence invariant.
         self._execute_coupling_functions(**kwargs)
+        self.check_divergence()
 
     def _shall_stop(self) -> bool:
         return False

@@ -93,3 +93,90 @@ def test_coupler_max_steps_fails_instead_of_silently_omitting_rows():
 
         with pytest.raises(CouplingError, match="max_steps"):
             coupler.launch()
+
+
+def test_under_relaxation_factor_validation():
+    coupler = Coupler(name="relax_test")
+    coupler.set_under_relaxation("temperature", 0.5)
+    assert coupler.get_under_relaxation("temperature") == 0.5
+    assert coupler.get_under_relaxation("unconfigured") == 1.0
+
+    with pytest.raises(ValueError, match="Under-relaxation factor"):
+        coupler.set_under_relaxation("temperature", 0.0)
+
+    with pytest.raises(ValueError, match="Under-relaxation factor"):
+        coupler.set_under_relaxation("temperature", -0.5)
+
+    with pytest.raises(ValueError, match="Under-relaxation factor"):
+        coupler.set_under_relaxation("temperature", 1.2)
+
+
+def test_under_relaxation_relax_calculation():
+    coupler = Coupler(name="relax_calc")
+    coupler.set_under_relaxation("temp", 0.4)
+
+    # First call with no prior value initializes and returns new_value
+    val1 = coupler.relax("temp", 100.0)
+    assert val1 == 100.0
+
+    # Second call relaxes between 200.0 and prior 100.0: 0.4 * 200 + 0.6 * 100 = 140.0
+    val2 = coupler.relax("temp", 200.0)
+    assert pytest.approx(val2) == 140.0
+
+    # Explicit old_value relaxes directly: 0.4 * 300 + 0.6 * 100 = 180.0
+    val3 = coupler.relax("temp", 300.0, old_value=100.0)
+    assert pytest.approx(val3) == 180.0
+
+
+def test_divergence_detector_callback_triggers_error():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        case = Case(name="div_case", output_files={})
+        case.database = Database(data={"RHO": [None]})
+
+        coupler = Coupler(name="div_coupling")
+        coupler.main_dir = tmpdir
+        coupler.add_case(case, attributes=["RHO"])
+        coupler.database = Database(data={"RHO": [1.0]})
+
+        def custom_divergence_check(c):
+            return True  # Force divergence trigger
+
+        coupler.add_divergence_detector(custom_divergence_check)
+
+        with pytest.raises(CouplingError, match="Coupling divergence detected"):
+            coupler.launch_case(c_step=0)
+
+
+def test_divergence_threshold_exceeded_triggers_error():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        case = Case(name="thresh_case", output_files={})
+        case.database = Database(data={"RHO": [None]})
+
+        coupler = Coupler(name="thresh_coupling")
+        coupler.main_dir = tmpdir
+        coupler.add_case(case, attributes=["RHO"])
+        coupler.database = Database(data={"RHO": [50.0]})
+        coupler.set_divergence_threshold("RHO", max_allowed=10.0)
+
+        with pytest.raises(CouplingError, match="exceeds threshold"):
+            coupler.launch_case(c_step=0)
+
+
+def test_run_to_convergence_error_on_max_exec():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        case = Case(name="conv_case", output_files={})
+        case.database = Database(data={"RHO": [None]})
+
+        coupler = Coupler(name="conv_coupling")
+        coupler.main_dir = tmpdir
+        coupler.add_case(case, attributes=["RHO"])
+        coupler.database = Database(data={"RHO": [1.0]})
+
+        # Non-converging check_fn with error_on_max_exec=False returns result without error
+        res = coupler.run_to_convergence(max_exec=2, check_fn=lambda c: False, error_on_max_exec=False)
+        assert res.converged is False
+        assert res.executions == 2
+
+        # With error_on_max_exec=True raises CouplingError
+        with pytest.raises(CouplingError, match="failed to converge within max_exec=2"):
+            coupler.run_to_convergence(max_exec=2, check_fn=lambda c: False, error_on_max_exec=True)
