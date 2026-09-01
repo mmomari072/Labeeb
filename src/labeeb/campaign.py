@@ -131,6 +131,7 @@ class Campaign:
         manifest: CampaignManifest,
         state_path: Optional[Union[str, Path]] = None,
         status_registry: Optional[Any] = None,
+        memory: Optional[Any] = None,
     ) -> None:
         if not isinstance(manifest, CampaignManifest):
             raise CampaignError("Campaign requires a validated CampaignManifest")
@@ -140,13 +141,20 @@ class Campaign:
         self.manifest = manifest
         self.state_path = Path(state_path) if state_path is not None else None
         from .results import StatusRegistry
+        from .shared_memory import CampaignMemory
 
         self.status_registry = status_registry if status_registry is not None else StatusRegistry()
+        self.memory: CampaignMemory = memory if memory is not None else CampaignMemory()
 
     @classmethod
-    def from_manifest(cls, path: Union[str, Path], state_path: Optional[Union[str, Path]] = None) -> "Campaign":
+    def from_manifest(
+        cls,
+        path: Union[str, Path],
+        state_path: Optional[Union[str, Path]] = None,
+        memory: Optional[Any] = None,
+    ) -> "Campaign":
         """Load a manifest and return an executable campaign object."""
-        return cls(load_manifest(path), state_path=state_path)
+        return cls(load_manifest(path), state_path=state_path, memory=memory)
 
     def export_status(self, path: Union[str, Path]) -> Any:
         """Export the campaign's status registry to CSV, JSON, or Parquet."""
@@ -241,11 +249,19 @@ class Campaign:
                     self._append_lifecycle_event("case_cache_hit", run_root, case_id=case_id, status="SKIPPED")
                     cached_result = CaseResult.from_record(persisted["result"])
                     self.status_registry.record_result(cached_result)
+                    self.memory.record_case(
+                        case_id,
+                        {**cached_result.parameters, "status": cached_result.status, "duration": cached_result.duration_seconds, "exit_code": cached_result.exit_code, "cached": True},
+                    )
                     results.append(cached_result)
                     continue
                 if state is not None and persisted is not None and not state.retry_allowed(case_id, max_retries):
                     persisted_result = CaseResult.from_record(persisted["result"])
                     self.status_registry.record_result(persisted_result)
+                    self.memory.record_case(
+                        case_id,
+                        {**persisted_result.parameters, "status": persisted_result.status, "duration": persisted_result.duration_seconds, "exit_code": persisted_result.exit_code, "failure": persisted_result.failure},
+                    )
                     results.append(persisted_result)
                     continue
 
@@ -277,6 +293,10 @@ class Campaign:
                 if result.status != "SUCCESS":
                     campaign_status = "FAILED"
                 self.status_registry.record_result(result)
+                self.memory.record_case(
+                    case_id,
+                    {**parameters, "status": result.status, "duration": result.duration_seconds, "exit_code": result.exit_code, "failure": result.failure},
+                )
                 if state is not None:
                     state.save(result, input_hash)
                 results.append(result)
