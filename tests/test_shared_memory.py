@@ -122,3 +122,22 @@ def test_campaign_integration_with_memory(tmp_path):
     assert all_cases[0]["status"] == "SUCCESS"
     assert all_cases[1]["PARAM"] == 2
     assert all_cases[2]["PARAM"] == 3
+
+
+def test_record_case_post_mutation_isolation():
+    memory = CampaignMemory()
+    caller_dict = {"nested": {"count": 1}, "values": [1, 2, 3]}
+    memory.record_case(0, caller_dict)
+
+    # Mutate caller dict post-record
+    caller_dict["nested"]["count"] = 999
+    caller_dict["values"].append(4)
+
+    # Stored state in memory and backend must remain unaffected
+    stored = memory.get_case(0)
+    assert stored["nested"]["count"] == 1
+    assert stored["values"] == [1, 2, 3]
+
+    backend_stored = memory.backend.get("case_0")
+    assert backend_stored["nested"]["count"] == 1
+    assert backend_stored["values"] == [1, 2, 3]

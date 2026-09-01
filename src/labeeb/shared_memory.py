@@ -121,13 +121,14 @@ class CampaignMemory:
             raise SharedMemoryError("case data must be a dictionary")
 
         with self._lock:
-            self._case_records[case_id] = deepcopy(data)
-            self.backend.set(f"case_{case_id}", data)
+            copied_data = deepcopy(data)
+            self._case_records[case_id] = copied_data
+            self.backend.set(f"case_{case_id}", deepcopy(copied_data))
             listeners = list(self._listeners)
 
         for listener in listeners:
             try:
-                listener(case_id, data)
+                listener(case_id, deepcopy(copied_data))
             except Exception:
                 pass
 
