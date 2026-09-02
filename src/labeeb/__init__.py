@@ -63,6 +63,7 @@ from .publisher import (
     LiveObserver,
     NullEventPublisher,
     PublisherError,
+    RedisStreamEventPublisher,
     WebSocketEventPublisher,
 )
 from .plot import LivePlot, PlotObserver
@@ -86,7 +87,7 @@ __all__ = [
     "CsvHarvester", "StatusRegistry", "ExecutionStatusRegistry", "EventPublisher",
     "CouplingError", "Database", "DatabaseError", "DiscreteSampling", "ExecutionBackend",
     "ExecutionEvent", "ExecutionResult", "ExtractionError", "FOATConstructor", "File", "Flag", "FlagsMap",
-    "Harvester", "InMemorySharedBackend", "JsonHarvester", "JsonlEventPublisher", "LabeebError", "LiveObserver", "LivePlot", "LocalExecutionBackend", "NullEventPublisher", "PlotObserver", "PublisherError", "RegexHarvester", "SamplingError", "SharedMemoryBackend", "SharedMemoryError", "WebSocketEventPublisher", "correlation_analysis",
+    "Harvester", "InMemorySharedBackend", "JsonHarvester", "JsonlEventPublisher", "LabeebError", "LiveObserver", "LivePlot", "LocalExecutionBackend", "NullEventPublisher", "PlotObserver", "PublisherError", "RedisStreamEventPublisher", "RegexHarvester", "SamplingError", "SharedMemoryBackend", "SharedMemoryError", "WebSocketEventPublisher", "correlation_analysis",
     "append_execution_event", "export_analysis_bundle", "export_case_results", "export_execution_events", "extract_csv", "extract_json", "extract_regex", "halton_sample",
     "latin_hypercube_sample", "load_analysis_bundle", "load_manifest", "morris_screening", "normal_sample", "product",
     "run_extractor", "sample", "sobol_indices", "uniform_sample", "wilks_sample_size",

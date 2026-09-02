@@ -329,3 +329,71 @@ class WebSocketEventPublisher(EventPublisher):
             except Exception:
                 pass
         self._transport = None
+
+
+class RedisStreamEventPublisher(EventPublisher):
+    """
+    Optional Redis Streams event transport adapter.
+    Publishes streaming lifecycle and execution events to a Redis Stream via XADD
+    with connection failure isolation, dependency safety, and bounded ring buffering.
+    """
+
+    def __init__(
+        self,
+        stream_key: str = "labeeb:events",
+        url: str = "redis://localhost:6379/0",
+        enabled: bool = True,
+        max_buffer_size: int = 1000,
+        maxlen: Optional[int] = None,
+        redact_keys: Optional[Sequence[str]] = None,
+        client_factory: Optional[Callable[[str], Any]] = None,
+    ) -> None:
+        super().__init__(enabled=enabled, max_buffer_size=max_buffer_size, redact_keys=redact_keys)
+        self.stream_key: str = stream_key
+        self.url: str = url
+        self.maxlen: Optional[int] = maxlen
+        self.client_factory = client_factory
+        self._client: Optional[Any] = None
+
+    def _get_client(self) -> Optional[Any]:
+        if self._client is not None:
+            return self._client
+        if self.client_factory is not None:
+            try:
+                self._client = self.client_factory(self.url)
+                return self._client
+            except Exception as exc:
+                logger.debug("Redis client factory failed: %s", exc)
+                return None
+        try:
+            import redis
+
+            self._client = redis.from_url(self.url)
+            return self._client
+        except ImportError:
+            logger.debug("redis-py is not installed; skipping Redis stream publish.")
+            return None
+        except Exception as exc:
+            logger.debug("Redis connection to '%s' failed: %s", self.url, exc)
+            return None
+
+    def _publish_impl(self, record: Dict[str, Any]) -> None:
+        if not self.enabled:
+            return
+        try:
+            client = self._get_client()
+            if client is not None and hasattr(client, "xadd"):
+                payload = json.dumps(record, sort_keys=True)
+                kwargs: Dict[str, Any] = {"maxlen": self.maxlen} if self.maxlen is not None else {}
+                client.xadd(self.stream_key, {"payload": payload}, **kwargs)
+        except Exception as exc:
+            logger.debug("RedisStreamEventPublisher XADD failed: %s", exc)
+            self._client = None
+
+    def close(self) -> None:
+        if self._client is not None and hasattr(self._client, "close"):
+            try:
+                self._client.close()
+            except Exception:
+                pass
+        self._client = None
