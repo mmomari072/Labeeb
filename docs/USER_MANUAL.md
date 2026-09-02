@@ -397,6 +397,32 @@ command, duration, harvested metrics, and stdout/stderr log paths (when
 When no catalog is configured — the default — campaign behavior is completely
 unchanged and no file is created.
 
+### Campaign-Native Live Plotting (opt-in)
+Pass a `PlotObserver`/`LivePlot` instance (or a configuration mapping) to
+`Campaign(..., live_plot=...)` — or declare `execution.live_plot` in the
+manifest — to plot campaign parameters/metrics online while `run()` executes:
+
+```python
+from labeeb import Campaign, PlotObserver, JsonlEventPublisher
+
+publisher = JsonlEventPublisher("runs/events.jsonl")
+plot = PlotObserver(metrics=["RHO", "duration"], output_path="runs/live.png")
+
+campaign = Campaign(manifest, publisher=publisher, live_plot=plot)
+campaign.run()          # plot is attached for the run, detached + closed after
+# or: live_plot={"metrics": ["RHO"], "output_path": "runs/live.png"}
+```
+
+The campaign attaches the observer to its publisher before the first event and
+**safely detaches and closes it afterwards — including when `run()` raises** —
+so plotting can never leak errors into execution (attach/detach/close failures
+are logged and ignored). The observer receives every lifecycle event (case
+start/complete/failure, campaign start/complete), so numeric metrics named in
+`metrics=` accumulate from event payloads. Publisher behavior is unchanged;
+`EventPublisher` additionally gains an idempotent `remove_observer()` for
+detachment. Without a publisher, a configured plot is closed cleanly and the run
+proceeds headless.
+
 ### Backup & Restore (`labeeb.backup`)
 Campaign state databases and run artifacts can be snapshotted as one validated,
 atomic backup directory:
@@ -596,6 +622,7 @@ observer = PlotObserver(
     enabled=True
 )
 pub.add_observer(observer)
+# ... later: pub.remove_observer(observer)  # idempotent detach
 
 # 2. Context manager for automated flushes and plot rendering
 with LivePlot(metrics=["RHO", "WF"], output_path="runs/progress.png") as lp:

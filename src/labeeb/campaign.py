@@ -137,6 +137,7 @@ class Campaign:
         memory: Optional[Any] = None,
         publisher: Optional[Any] = None,
         output_catalog: Optional[Union[str, Path]] = None,
+        live_plot: Optional[Any] = None,
     ) -> None:
         if not isinstance(manifest, CampaignManifest):
             raise CampaignError("Campaign requires a validated CampaignManifest")
@@ -148,6 +149,7 @@ class Campaign:
         self.output_catalog: Optional[Path] = (
             Path(output_catalog) if output_catalog is not None else None
         )
+        self.live_plot = self._coerce_live_plot(live_plot)
         from .results import StatusRegistry
         from .shared_memory import CampaignMemory
 
@@ -163,6 +165,7 @@ class Campaign:
         memory: Optional[Any] = None,
         publisher: Optional[Any] = None,
         output_catalog: Optional[Union[str, Path]] = None,
+        live_plot: Optional[Any] = None,
     ) -> "Campaign":
         """Load a manifest and return an executable campaign object."""
         return cls(
@@ -171,7 +174,49 @@ class Campaign:
             memory=memory,
             publisher=publisher,
             output_catalog=output_catalog,
+            live_plot=live_plot,
         )
+
+    @staticmethod
+    def _coerce_live_plot(live_plot: Any) -> Optional[Any]:
+        """Normalize the live_plot argument into a PlotObserver instance.
+
+        Accepts a ``PlotObserver``/``LivePlot`` instance or a plain mapping of
+        its configuration keys (``metrics``, ``output_path``, ``enabled``,
+        ``update_interval_seconds``, ``title``, ``xlabel``, ``ylabel``).
+        """
+        if live_plot is None:
+            return None
+        from .plot import LivePlot, PlotObserver
+
+        if isinstance(live_plot, (PlotObserver, LivePlot)):
+            return live_plot
+        if isinstance(live_plot, dict):
+            from .plot import PlotObserver
+
+            allowed = {
+                "metrics", "extract_fn", "output_path", "enabled",
+                "update_interval_seconds", "title", "xlabel", "ylabel",
+            }
+            unknown = sorted(set(live_plot) - allowed)
+            if unknown:
+                logger.warning(
+                    "live_plot config keys ignored (unsupported): %s", ", ".join(unknown)
+                )
+            config = {key: value for key, value in live_plot.items() if key in allowed}
+            return PlotObserver(**config)
+        raise CampaignError(
+            "live_plot must be a PlotObserver/LivePlot instance or a configuration mapping"
+        )
+
+    def _resolve_live_plot(self) -> Optional[Any]:
+        """Return the live plot observer for this run, if any."""
+        if self.live_plot is not None:
+            return self.live_plot
+        manifest_plot = self.manifest.execution.get("live_plot")
+        if manifest_plot is None:
+            return None
+        return self._coerce_live_plot(manifest_plot)
 
     def export_status(self, path: Union[str, Path]) -> Any:
         """Export the campaign's status registry to CSV, JSON, or Parquet."""
@@ -331,8 +376,50 @@ class Campaign:
         )
         catalog.record(record)
 
+    def _attach_live_plot(self, live_plot: Optional[Any]) -> bool:
+        """Attach the live plot observer to the campaign publisher (safe).
+
+        Returns True when attached. Attachment failures never raise: they are
+        logged and the campaign continues without live plotting.
+        """
+        if live_plot is None:
+            return False
+        if self.publisher is None:
+            logger.warning(
+                "live_plot configured but campaign has no publisher; "
+                "events will not reach the plot"
+            )
+            return False
+        try:
+            self.publisher.add_observer(live_plot)
+            return True
+        except Exception as exc:
+            logger.warning("Failed to attach live plot observer: %s", exc)
+            return False
+
+    def _shutdown_live_plot(self, live_plot: Optional[Any], attached: bool) -> None:
+        """Detach and close the live plot observer without ever raising."""
+        if live_plot is None:
+            return
+        if attached and self.publisher is not None:
+            try:
+                self.publisher.remove_observer(live_plot)
+            except Exception as exc:
+                logger.warning("Failed to detach live plot observer: %s", exc)
+        try:
+            live_plot.close()
+        except Exception as exc:
+            logger.warning("Failed to close live plot observer: %s", exc)
+
     def run(self, resume: bool = True, max_retries: int = 3) -> List["CaseResult"]:
-        """Execute all cases and return ordered :class:`CaseResult` records."""
+        """Execute all cases and return ordered :class:`CaseResult` records.
+
+        When a live plot observer is configured (``live_plot=`` or manifest
+        ``execution.live_plot``) and the campaign has a publisher, the observer
+        is attached before the first event and detached + closed afterwards —
+        including when execution raises — so a plotting error can never leak
+        into the run.
+        """
         from .exceptions import CaseExecutionError
         from .results import CaseResult
 
@@ -347,86 +434,91 @@ class Campaign:
         campaign_status = "SUCCESS"
         catalog_context = self._open_output_catalog()
         catalog = catalog_context.__enter__() if catalog_context is not None else None
+        live_plot = self._resolve_live_plot()
+        plot_attached = self._attach_live_plot(live_plot) if live_plot is not None else False
         self._append_lifecycle_event("campaign_start", run_root)
         try:
-            for case_id in range(len(case.database)):
-                parameters = case.database.get_row(case_id)
-                input_hash = self._input_hash(case_id, parameters)
-                persisted = state.get(case_id) if state is not None else None
-                if resume and state is not None and state.should_reuse(case_id, input_hash):
-                    self._append_lifecycle_event("case_cache_hit", run_root, case_id=case_id, status="SKIPPED")
-                    cached_result = CaseResult.from_record(persisted["result"])
-                    self.status_registry.record_result(cached_result)
-                    self.memory.record_case(
-                        case_id,
-                        {**cached_result.parameters, "status": cached_result.status, "duration": cached_result.duration_seconds, "exit_code": cached_result.exit_code, "cached": True},
-                    )
-                    results.append(cached_result)
-                    continue
-                if state is not None and persisted is not None and not state.retry_allowed(case_id, max_retries):
-                    persisted_result = CaseResult.from_record(persisted["result"])
-                    self.status_registry.record_result(persisted_result)
-                    self.memory.record_case(
-                        case_id,
-                        {**persisted_result.parameters, "status": persisted_result.status, "duration": persisted_result.duration_seconds, "exit_code": persisted_result.exit_code, "failure": persisted_result.failure},
-                    )
-                    results.append(persisted_result)
-                    continue
+            try:
+                for case_id in range(len(case.database)):
+                    parameters = case.database.get_row(case_id)
+                    input_hash = self._input_hash(case_id, parameters)
+                    persisted = state.get(case_id) if state is not None else None
+                    if resume and state is not None and state.should_reuse(case_id, input_hash):
+                        self._append_lifecycle_event("case_cache_hit", run_root, case_id=case_id, status="SKIPPED")
+                        cached_result = CaseResult.from_record(persisted["result"])
+                        self.status_registry.record_result(cached_result)
+                        self.memory.record_case(
+                            case_id,
+                            {**cached_result.parameters, "status": cached_result.status, "duration": cached_result.duration_seconds, "exit_code": cached_result.exit_code, "cached": True},
+                        )
+                        results.append(cached_result)
+                        continue
+                    if state is not None and persisted is not None and not state.retry_allowed(case_id, max_retries):
+                        persisted_result = CaseResult.from_record(persisted["result"])
+                        self.status_registry.record_result(persisted_result)
+                        self.memory.record_case(
+                            case_id,
+                            {**persisted_result.parameters, "status": persisted_result.status, "duration": persisted_result.duration_seconds, "exit_code": persisted_result.exit_code, "failure": persisted_result.failure},
+                        )
+                        results.append(persisted_result)
+                        continue
 
-                started = time.monotonic()
-                case.case_id = case_id
-                attempt = persisted["attempts"] if persisted is not None else 0
-                output_lens = {key: len(values) for key, values in case.outputs.items()}
-                self._append_lifecycle_event("case_start", run_root, case_id=case_id, attempt=attempt, status="STARTED")
-                try:
-                    case.launch_case(case_id, _attempt=attempt)
-                    result = CaseResult(case_id, parameters, "SUCCESS", 0, time.monotonic() - started)
-                except CaseExecutionError as exc:
-                    result = CaseResult(
-                        case_id, parameters, "FAILED", None, time.monotonic() - started, failure=str(exc)
-                    )
-                if case.execution_history:
-                    event_record = case.execution_history[-1].get("execution_event")
-                    if event_record:
-                        from .execution import ExecutionEvent, append_execution_event
-                        if self.publisher is not None:
-                            try:
-                                self.publisher.publish(ExecutionEvent.from_dict(event_record))
-                            except Exception:
-                                pass
-                        events_file = self.manifest.execution.get("events_file")
-                        if events_file:
-                            event_path = Path(events_file)
-                            if not event_path.is_absolute():
-                                event_path = Path(case.main_dir) / event_path
-                            append_execution_event(ExecutionEvent.from_dict(event_record), event_path)
-                self._append_lifecycle_event(
-                    "case_complete" if result.status == "SUCCESS" else "case_failure",
-                    run_root, case_id=case_id, attempt=attempt, status=result.status, message=result.failure,
-                    details={**parameters, "duration": result.duration_seconds},
-                )
-                if result.status != "SUCCESS":
-                    campaign_status = "FAILED"
-                self.status_registry.record_result(result)
-                self.memory.record_case(
-                    case_id,
-                    {**parameters, "status": result.status, "duration": result.duration_seconds, "exit_code": result.exit_code, "failure": result.failure},
-                )
-                if catalog is not None:
+                    started = time.monotonic()
+                    case.case_id = case_id
+                    attempt = persisted["attempts"] if persisted is not None else 0
+                    output_lens = {key: len(values) for key, values in case.outputs.items()}
+                    self._append_lifecycle_event("case_start", run_root, case_id=case_id, attempt=attempt, status="STARTED")
                     try:
-                        self._record_catalog_attempt(catalog, case, result, case_id, attempt, output_lens)
+                        case.launch_case(case_id, _attempt=attempt)
+                        result = CaseResult(case_id, parameters, "SUCCESS", 0, time.monotonic() - started)
+                    except CaseExecutionError as exc:
+                        result = CaseResult(
+                            case_id, parameters, "FAILED", None, time.monotonic() - started, failure=str(exc)
+                        )
+                    if case.execution_history:
+                        event_record = case.execution_history[-1].get("execution_event")
+                        if event_record:
+                            from .execution import ExecutionEvent, append_execution_event
+                            if self.publisher is not None:
+                                try:
+                                    self.publisher.publish(ExecutionEvent.from_dict(event_record))
+                                except Exception:
+                                    pass
+                            events_file = self.manifest.execution.get("events_file")
+                            if events_file:
+                                event_path = Path(events_file)
+                                if not event_path.is_absolute():
+                                    event_path = Path(case.main_dir) / event_path
+                                append_execution_event(ExecutionEvent.from_dict(event_record), event_path)
+                    self._append_lifecycle_event(
+                        "case_complete" if result.status == "SUCCESS" else "case_failure",
+                        run_root, case_id=case_id, attempt=attempt, status=result.status, message=result.failure,
+                        details={**parameters, "duration": result.duration_seconds},
+                    )
+                    if result.status != "SUCCESS":
+                        campaign_status = "FAILED"
+                    self.status_registry.record_result(result)
+                    self.memory.record_case(
+                        case_id,
+                        {**parameters, "status": result.status, "duration": result.duration_seconds, "exit_code": result.exit_code, "failure": result.failure},
+                    )
+                    if catalog is not None:
+                        try:
+                            self._record_catalog_attempt(catalog, case, result, case_id, attempt, output_lens)
+                        except Exception as exc:
+                            logger.warning("Failed to record output catalog attempt for case %s: %s", case_id, exc)
+                    if state is not None:
+                        state.save(result, input_hash)
+                    results.append(result)
+            finally:
+                if catalog_context is not None:
+                    try:
+                        catalog_context.__exit__(None, None, None)
                     except Exception as exc:
-                        logger.warning("Failed to record output catalog attempt for case %s: %s", case_id, exc)
-                if state is not None:
-                    state.save(result, input_hash)
-                results.append(result)
+                        logger.warning("Failed to close output catalog cleanly: %s", exc)
+                if state_context is not None:
+                    state_context.__exit__(None, None, None)
+            self._append_lifecycle_event("campaign_complete", run_root, status=campaign_status)
         finally:
-            if catalog_context is not None:
-                try:
-                    catalog_context.__exit__(None, None, None)
-                except Exception as exc:
-                    logger.warning("Failed to close output catalog cleanly: %s", exc)
-            if state_context is not None:
-                state_context.__exit__(None, None, None)
-        self._append_lifecycle_event("campaign_complete", run_root, status=campaign_status)
+            self._shutdown_live_plot(live_plot, plot_attached)
         return results

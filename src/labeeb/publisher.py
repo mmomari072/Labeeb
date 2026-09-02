@@ -12,7 +12,7 @@ import threading
 import time
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Any, Callable, Deque, Dict, Iterable, List, Optional, Sequence, Union
+from typing import Any, Callable, Deque, Dict, List, Optional, Sequence, Union
 
 from .exceptions import LabeebError
 
@@ -76,6 +76,15 @@ class EventPublisher(ABC):
                 obs = LiveObserver(observer)
             if obs not in self._observers:
                 self._observers.append(obs)
+        return self
+
+    def remove_observer(self, observer: Any) -> "EventPublisher":
+        """Detach a live observer. Idempotent and safe when not attached."""
+        with self._lock:
+            for candidate in list(self._observers):
+                if candidate is observer or candidate == observer:
+                    self._observers.remove(candidate)
+                    break
         return self
 
     def _redact(self, data: Any) -> Any:
