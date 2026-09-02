@@ -201,6 +201,71 @@ def test_section_6_case_and_harvesters(tmp_path):
     assert callable_harvester.harvest() == 1.85
 
 
+def test_section_6_failure_handling_policies(tmp_path):
+    # 1. Case with command_failure_policy="retry" and max_attempts=3
+    case_retry = Case(name="retry_case", output_files={})
+    case_retry.command_failure_policy = "retry"
+    case_retry.max_attempts = 3
+    assert case_retry.command_failure_policy == "retry"
+    assert case_retry.max_attempts == 3
+
+    # 2. Sequential campaign with continue policies & OutputCatalog
+    deck = tmp_path / "deck.template"
+    deck.write_text("RHO = #RHO#\n", encoding="utf-8")
+
+    fail_cmd = (
+        f"{sys.executable} -c \"import pathlib, sys; "
+        f"sys.exit(1 if '19.0' in pathlib.Path('deck.template').read_text() else 0)\""
+    )
+
+    manifest = CampaignManifest.from_dict({
+        "name": "seq_failure_sweep",
+        "parameters": {"RHO": [18.5, 19.0, 19.5]},
+        "templates": [str(deck)],
+        "commands": [fail_cmd],
+        "execution": {
+            "main_dir": str(tmp_path),
+            "run_dir": "runs_seq",
+            "command_failure_policy": "continue",
+            "harvest_failure_policy": "continue",
+            "output_catalog": str(tmp_path / "catalog_seq.sqlite"),
+        }
+    })
+
+    campaign = Campaign(manifest, state_path=str(tmp_path / "state_seq.sqlite"))
+    results = campaign.run()
+
+    assert len(results) == 3
+    assert results[0].status == "SUCCESS"
+    assert results[1].status == "FAILED"
+    assert results[2].status == "SUCCESS"
+
+    # 3. Parallel campaign with continue policies
+    manifest_parallel = CampaignManifest.from_dict({
+        "name": "parallel_failure_sweep",
+        "parameters": {"RHO": [18.0, 18.5, 19.0, 19.5]},
+        "templates": [str(deck)],
+        "commands": [fail_cmd],
+        "execution": {
+            "main_dir": str(tmp_path),
+            "run_dir": "runs_parallel",
+            "parallel": True,
+            "n_workers": 2,
+            "command_failure_policy": "continue",
+            "harvest_failure_policy": "continue",
+        }
+    })
+
+    campaign_parallel = Campaign(manifest_parallel)
+    results_par = campaign_parallel.run()
+
+    assert len(results_par) == 4
+    successes = [r for r in results_par if r.status == "SUCCESS"]
+    failures = [r for r in results_par if r.status == "FAILED"]
+    assert len(successes) == 3
+    assert len(failures) == 1
+
+
 def test_section_7_campaign_status(tmp_path):
     deck = tmp_path / "deck.template"
     deck.write_text("RHO = #RHO#\nWF = #WF#\n")
