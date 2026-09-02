@@ -1,4 +1,5 @@
 import os
+import sys
 import tempfile
 from pathlib import Path
 import pytest
@@ -337,41 +338,106 @@ def test_section_12_analysis():
 
 def test_section_13_case_study():
     with tempfile.TemporaryDirectory() as workspace:
-        root = Path(workspace)
-        deck = root / "simulation.template"
-        deck.write_text("FUEL_DENSITY = #RHO#\nENRICHMENT = #WF#\n")
+        work_root = Path(workspace)
 
-        samples = latin_hypercube_sample([(18.5, 19.5), (0.015, 0.025)], size=10, seed=123)
-        rhos = [float(s[0]) for s in samples]
-        wfs = [float(s[1]) for s in samples]
+        # 1. Parameter Generation & Database Setup
+        bounds = [(0.190, 0.205), (1100.0, 1300.0), (10.0, 15.0)]
+        samples = latin_hypercube_sample(bounds, size=6, seed=42)
+        enrich_vals = [round(float(s[0]), 5) for s in samples]
+        flow_vals = [round(float(s[1]), 2) for s in samples]
+        power_vals = [round(float(s[2]), 2) for s in samples]
 
-        manifest = CampaignManifest(
-            name="jrtr_fuel_uncertainty",
-            parameters={"RHO": rhos, "WF": wfs},
-            templates=[str(deck)],
-            commands=["python -c 'print(\"Simulation completed.\")'"],
-            execution={"main_dir": str(root), "run_dir": "runs"}
+        db = Database(name="reactor_parameters")
+        db.add_attribute(
+            Attribute("ENRICH", data=enrich_vals, unit="fraction"),
+            Attribute("FLOW", data=flow_vals, unit="kg/s"),
+            Attribute("POWER", data=power_vals, unit="MWth"),
+        )
+        db.add_derived_attribute("POWER_KW", "POWER * 1000.0", unit="kW")
+        db.add_derived_attribute(
+            "SPECIFIC_FLOW",
+            lambda row: row["FLOW"] / max(row["POWER"], 1e-3),
+            dependencies=["FLOW", "POWER"],
+            unit="kg/(s*MW)",
         )
 
-        event_path = root / "events.jsonl"
-        publisher = JsonlEventPublisher(event_path)
-        memory = CampaignMemory()
+        # 2. Template Deck Setup
+        template_file = work_root / "reactor.template"
+        template_file.write_text(
+            "TITLE JRTR Core Sensitivity Model\n"
+            "PARAM ENRICHMENT = #ENRICH#\n"
+            "PARAM FLOW_RATE = #FLOW#\n"
+            "PARAM POWER_MW = #POWER#\n"
+            "PARAM POWER_WATTS = ${POWER * 1e6 : {:.2e}}\n"
+        )
 
+        # 3. Deterministic Local Physics Stub
+        stub_file = work_root / "physics_stub.py"
+        stub_file.write_text(
+            "import re, sys, pathlib\n"
+            "content = pathlib.Path('reactor.template').read_text()\n"
+            "enrich = float(re.search(r'ENRICHMENT = ([0-9.e+-]+)', content).group(1))\n"
+            "flow = float(re.search(r'FLOW_RATE = ([0-9.e+-]+)', content).group(1))\n"
+            "power = float(re.search(r'POWER_MW = ([0-9.e+-]+)', content).group(1))\n"
+            "keff = 1.0000 + 1.25 * (enrich - 0.1975) - 0.00005 * (flow - 1200.0)\n"
+            "peak_temp = 293.15 + (power * 1e6) / (flow * 4184.0) * 15.0\n"
+            "with open('physics.log', 'w') as f:\n"
+            "    f.write(f'JRTR Simulation Converged: final keff = {keff:.5f}\\n')\n"
+            "    f.write(f'Maximum Fuel Temperature: {peak_temp:.2f} K\\n')\n"
+        )
+        stub_cmd = f"{sys.executable} {stub_file.resolve()}"
+
+        # 4. Campaign Orchestration with Event Publishing and Shared Memory
+        manifest = CampaignManifest(
+            name="jrtr_reactor_case_study",
+            parameters={
+                "ENRICH": db["ENRICH"].tolist(),
+                "FLOW": db["FLOW"].tolist(),
+                "POWER": db["POWER"].tolist(),
+            },
+            templates=[str(template_file)],
+            commands=[stub_cmd],
+            execution={"main_dir": str(work_root), "run_dir": "runs", "capture_output": True},
+        )
+
+        events_log = work_root / "campaign_events.jsonl"
+        publisher = JsonlEventPublisher(events_log)
+        memory = CampaignMemory()
         campaign = Campaign(manifest, memory=memory, publisher=publisher)
+
+        # 5. Execute Simulation Campaign
         results = campaign.run()
         publisher.flush()
 
-        assert len(results) == 10
-        summary = memory.online_summary(metrics=["RHO", "WF"])
-        assert "RHO" in summary
-        assert "WF" in summary
+        # 6. Output Harvesting Verification
+        harvested_keffs = []
+        for r in [res for res in results if res.status == "SUCCESS"]:
+            case_dir = work_root / "runs" / f"case_{r.case_id}"
+            harvester = RegexHarvester(
+                name="keff",
+                file_target=str(case_dir / "physics.log"),
+                pattern=r"final keff = ([0-9\.]+)",
+                transform=float,
+            )
+            val = harvester.harvest(str(case_dir))
+            harvested_keffs.append(val)
+            r.metrics["keff"] = val
 
-        bundle_path = root / "jrtr_fuel_uncertainty.zip"
+        assert len(harvested_keffs) == 6
+
+        # 7. Post-Run Sensitivity Analysis & Bundle Export
+        correlations = correlation_analysis(
+            inputs={
+                "ENRICH": [r.parameters["ENRICH"] for r in results if r.status == "SUCCESS"],
+                "FLOW": [r.parameters["FLOW"] for r in results if r.status == "SUCCESS"],
+                "POWER": [r.parameters["POWER"] for r in results if r.status == "SUCCESS"],
+            },
+            output=harvested_keffs,
+        )
+        assert len(correlations) == 3
+
+        bundle_path = work_root / "jrtr_reactor_case_study.zip"
         bundle = campaign.export_bundle(bundle_path, results=results)
         assert bundle_path.exists()
-        assert bundle.manifest["name"] == "jrtr_fuel_uncertainty"
-
-        dummy_keff = [1.0 + 0.01 * r - 0.05 * w for r, w in zip(rhos, wfs)]
-        corr = correlation_analysis(inputs={"RHO": rhos, "WF": wfs}, output=dummy_keff)
-        assert len(corr) == 2
+        assert bundle.manifest["name"] == "jrtr_reactor_case_study"
         publisher.close()
