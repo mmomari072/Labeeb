@@ -260,17 +260,19 @@ class OutputCatalog:
         return dataframe
 
     def export(self, path: Union[str, Path]) -> pd.DataFrame:
-        """Export all catalog records to CSV, JSON, or Parquet and return the DataFrame."""
+        """Export all catalog records to CSV, JSON, Parquet, or Excel and return the DataFrame."""
         output = Path(path)
         suffix = output.suffix.lower()
-        if suffix not in {".csv", ".json", ".parquet"}:
-            raise ValueError("Catalog export format must be .csv, .json, or .parquet")
+        if suffix not in {".csv", ".json", ".parquet", ".xlsx"}:
+            raise ValueError("Catalog export format must be .csv, .json, .parquet, or .xlsx")
         dataframe = self.to_dataframe()
         output.parent.mkdir(parents=True, exist_ok=True)
         if suffix == ".csv":
             dataframe.to_csv(output, index=False)
         elif suffix == ".json":
             dataframe.to_json(output, orient="records", indent=2)
+        elif suffix == ".xlsx":
+            dataframe.to_excel(output, index=False, sheet_name="output_catalog")
         else:
             dataframe.to_parquet(output, index=False)
         return dataframe

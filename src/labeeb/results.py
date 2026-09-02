@@ -154,11 +154,11 @@ def export_case_results(
     results: Iterable[CaseResult],
     path: Union[str, Path],
 ) -> pd.DataFrame:
-    """Export all case results to CSV, JSON, or Parquet and return a DataFrame."""
+    """Export all case results to CSV, JSON, Parquet, or Excel and return a DataFrame."""
     output = Path(path)
     suffix = output.suffix.lower()
-    if suffix not in {".csv", ".json", ".parquet"}:
-        raise ValueError("Results format must be .csv, .json, or .parquet")
+    if suffix not in {".csv", ".json", ".parquet", ".xlsx"}:
+        raise ValueError("Results format must be .csv, .json, .parquet, or .xlsx")
 
     records: List[Dict[str, Any]] = [result.to_record() for result in results]
     dataframe = pd.DataFrame(records, columns=[
@@ -175,6 +175,8 @@ def export_case_results(
         dataframe.to_csv(output, index=False)
     elif suffix == ".json":
         dataframe.to_json(output, orient="records", indent=2)
+    elif suffix == ".xlsx":
+        dataframe.to_excel(output, index=False, sheet_name="case_results")
     else:
         dataframe.to_parquet(output, index=False)
     return dataframe

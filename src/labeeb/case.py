@@ -266,8 +266,19 @@ class Case(CoupledUnit):
         name_or_harvester: Union[str, Any],
         pattern: Optional[Any] = None,
         file_target: Optional[str] = None,
+        optional: bool = False,
     ) -> "Case":
-        """Register a named CSV/JSON/regex or callable output extractor."""
+        """Register a named CSV/JSON/regex/Excel or callable output extractor.
+
+        Args:
+            name_or_harvester: Harvester instance, or a name for a built-in
+                extractor (column name / dotted JSON key / regex pattern /
+                Excel column) applied to ``file_target``.
+            pattern: Extractor pattern when ``name_or_harvester`` is a name.
+            file_target: Output file (relative to the case run directory).
+            optional: If True, a missing output file yields ``None`` instead of
+                failing the case (explicit optional-output discovery contract).
+        """
         from .extractors import Harvester
 
         if isinstance(name_or_harvester, Harvester):
@@ -278,7 +289,7 @@ class Case(CoupledUnit):
         name = str(name_or_harvester)
         if not name or not file_target:
             raise CaseExecutionError("Harvester name and file_target are required")
-        self.harvesters[name] = (pattern, file_target)
+        self.harvesters[name] = (pattern, file_target, optional)
         self.outputs.setdefault(name, [])
         return self
 
@@ -649,10 +660,13 @@ class Case(CoupledUnit):
                 if isinstance(spec, Harvester):
                     self.outputs[name].append(spec.harvest(self.current_case_dir))
                 else:
-                    pattern, file_target = spec
+                    pattern, file_target, optional = (list(spec) + [False])[:3]  # type: ignore[misc]
                     target = Path(file_target)
                     if not target.is_absolute():
                         target = Path(self.current_case_dir) / target
+                    if optional and not os_ops.isfile(str(target)):
+                        self.outputs[name].append(None)
+                        continue
                     self.outputs[name].append(run_extractor(target, pattern))
             except Exception as exc:
                 raise CaseExecutionError(

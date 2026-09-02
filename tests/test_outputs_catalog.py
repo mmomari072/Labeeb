@@ -248,8 +248,8 @@ def test_catalog_export_csv_json_and_summary(tmp_path):
         assert len(payload) == 3
         assert payload[0]["status"] == "SUCCESS"
 
-        with pytest.raises(ValueError, match="must be .csv, .json, or .parquet"):
-            catalog.export(tmp_path / "catalog.xlsx")
+        with pytest.raises(ValueError, match="must be .csv, .json, .parquet, or .xlsx"):
+            catalog.export(tmp_path / "catalog.ods")
     finally:
         catalog.close()
 

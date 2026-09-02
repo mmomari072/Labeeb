@@ -137,8 +137,16 @@ metrics, and failure details for every case, including failed cases.
 from labeeb.results import CaseResult, export_case_results
 
 results = [CaseResult(0, {"RHO": 19.0}, "SUCCESS", 0, 1.2, metrics={"keff": 1.0})]
-export_case_results(results, "campaign_results.csv")
+export_case_results(results, "campaign_results.csv")   # .csv / .json / .parquet / .xlsx
 ```
+
+Declared outputs are discovered in each case's run directory: `output_files`
+CSV columns are required, while harvesters (`CsvHarvester`, `JsonHarvester`,
+`RegexHarvester`, `ExcelHarvester`, `CallableHarvester`) are required by default
+and optional with `optional=True` — an optional output that was not produced is
+recorded as `None` instead of failing the case. Case input templates are copied
+into `case_<id>` run directories and rendered there (flags, assignments,
+`${expr}`), leaving the original template untouched.
 
 `CampaignStateStore` persists attempts for resume/retry workflows and prevents
 cache reuse when the input hash changes.

@@ -221,6 +221,31 @@ case.capture_output = True
 case.launch()
 ```
 
+#### Copy & Render Semantics
+For every database row, `Case.launch()` creates an isolated run directory
+`<main_dir>/<run_case_main_dir>/case_<id>` (repeated convergence passes of the
+same case use `case_<id>_iter<attempt>`). Input templates are then *copied into
+the run directory and rendered there*: flag replacement
+(`#RHO#` -> value), assignment-style replacement, and inline `${expr}`
+evaluation are applied in order to the in-memory copy, and the rendered file is
+written into the case directory. The original template file is never modified.
+`objects_to_be_copied` files are copied verbatim (unrendered) into the same
+directory, and simulation outputs are discovered and harvested from that same
+run directory.
+
+#### Output Declaration & Discovery Contract
+Outputs are declared explicitly — never guessed from the filesystem:
+
+* `output_files={"out.csv": ["keff", ...]}` declares *required* CSV columns;
+  a missing file or column fails the case.
+* Harvesters declare named, typed extractions from a specific file:
+  `CsvHarvester`, `JsonHarvester`, `RegexHarvester`, `ExcelHarvester`, or
+  `CallableHarvester`. By default the target file is *required* (missing file ->
+  `ExtractionError`, failing the case). Set `optional=True` (on the harvester or
+  via `Case.add_harvester(..., optional=True)`) to declare an *optional* output:
+  when the file was not produced, the run records `None` for that metric instead
+  of failing — useful for codes that emit auxiliary files conditionally.
+
 ### Structured Execution Logging & Redaction
 Every shell command executed through `Case.launch()` or `LocalExecutionBackend` produces an auditable `ExecutionEvent` record and, when JSON logging is enabled, a structured log line. Events are also recorded per case in `case.execution_history` and can be exported:
 
@@ -262,6 +287,7 @@ Extract typed scalar and vector responses from simulation outputs:
 from pathlib import Path
 from labeeb.extractors import (
     CsvHarvester,
+    ExcelHarvester,
     JsonHarvester,
     RegexHarvester,
     CallableHarvester,
@@ -288,6 +314,15 @@ json_harvester = JsonHarvester(
     name="peak_flux",
     file_target="summary.json",
     key="results.peak_flux"
+)
+
+# Extract a column from an Excel output workbook (optional file: None when absent)
+excel_harvester = ExcelHarvester(
+    name="rod_burnup",
+    file_target="burnup.xlsx",
+    column="BU_peak",
+    sheet=0,
+    optional=True,
 )
 
 # Custom programmatic harvester receiving target Path
