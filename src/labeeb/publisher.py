@@ -335,7 +335,8 @@ class RedisStreamEventPublisher(EventPublisher):
     """
     Optional Redis Streams event transport adapter.
     Publishes streaming lifecycle and execution events to a Redis Stream via XADD
-    with connection failure isolation, dependency safety, and bounded ring buffering.
+    asynchronously with non-blocking queue dispatch, configurable socket timeouts,
+    connection failure isolation, dependency safety, and bounded ring buffering.
     """
 
     def __init__(
@@ -346,14 +347,35 @@ class RedisStreamEventPublisher(EventPublisher):
         max_buffer_size: int = 1000,
         maxlen: Optional[int] = None,
         redact_keys: Optional[Sequence[str]] = None,
+        socket_timeout: float = 1.0,
+        socket_connect_timeout: float = 1.0,
         client_factory: Optional[Callable[[str], Any]] = None,
     ) -> None:
         super().__init__(enabled=enabled, max_buffer_size=max_buffer_size, redact_keys=redact_keys)
+        import queue
+
         self.stream_key: str = stream_key
         self.url: str = url
         self.maxlen: Optional[int] = maxlen
+        self.socket_timeout: float = socket_timeout
+        self.socket_connect_timeout: float = socket_connect_timeout
         self.client_factory = client_factory
         self._client: Optional[Any] = None
+        self._queue: queue.Queue = queue.Queue(maxsize=self.max_buffer_size)
+        self._running: bool = False
+        self._worker_thread: Optional[threading.Thread] = None
+
+        if self.enabled:
+            self._start_worker()
+
+    def _start_worker(self) -> None:
+        if self._worker_thread is not None and self._worker_thread.is_alive():
+            return
+        self._running = True
+        self._worker_thread = threading.Thread(
+            target=self._worker_loop, daemon=True, name="RedisStreamEventPublisherWorker"
+        )
+        self._worker_thread.start()
 
     def _get_client(self) -> Optional[Any]:
         if self._client is not None:
@@ -368,7 +390,11 @@ class RedisStreamEventPublisher(EventPublisher):
         try:
             import redis
 
-            self._client = redis.from_url(self.url)
+            self._client = redis.from_url(
+                self.url,
+                socket_timeout=self.socket_timeout,
+                socket_connect_timeout=self.socket_connect_timeout,
+            )
             return self._client
         except ImportError:
             logger.debug("redis-py is not installed; skipping Redis stream publish.")
@@ -377,20 +403,49 @@ class RedisStreamEventPublisher(EventPublisher):
             logger.debug("Redis connection to '%s' failed: %s", self.url, exc)
             return None
 
+    def _worker_loop(self) -> None:
+        import queue
+
+        while self._running:
+            try:
+                item = self._queue.get(timeout=0.2)
+            except queue.Empty:
+                continue
+
+            try:
+                client = self._get_client()
+                if client is not None and hasattr(client, "xadd"):
+                    payload = json.dumps(item, sort_keys=True)
+                    kwargs: Dict[str, Any] = {"maxlen": self.maxlen} if self.maxlen is not None else {}
+                    client.xadd(self.stream_key, {"payload": payload}, **kwargs)
+            except Exception as exc:
+                logger.debug("RedisStreamEventPublisher XADD worker failed: %s", exc)
+                self._client = None
+            finally:
+                self._queue.task_done()
+
     def _publish_impl(self, record: Dict[str, Any]) -> None:
         if not self.enabled:
             return
+        import queue
+
         try:
-            client = self._get_client()
-            if client is not None and hasattr(client, "xadd"):
-                payload = json.dumps(record, sort_keys=True)
-                kwargs: Dict[str, Any] = {"maxlen": self.maxlen} if self.maxlen is not None else {}
-                client.xadd(self.stream_key, {"payload": payload}, **kwargs)
-        except Exception as exc:
-            logger.debug("RedisStreamEventPublisher XADD failed: %s", exc)
-            self._client = None
+            self._queue.put_nowait(record)
+        except queue.Full:
+            try:
+                self._queue.get_nowait()
+                self._queue.put_nowait(record)
+            except Exception:
+                pass
+
+    def flush(self) -> None:
+        try:
+            self._queue.join()
+        except Exception:
+            pass
 
     def close(self) -> None:
+        self._running = False
         if self._client is not None and hasattr(self._client, "close"):
             try:
                 self._client.close()

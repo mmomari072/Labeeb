@@ -1,4 +1,5 @@
 import json
+import time
 from pathlib import Path
 from unittest.mock import MagicMock
 import pytest
@@ -21,7 +22,9 @@ def test_redis_publisher_offline_failure_isolation():
         stream_key="sim:events",
         url="redis://127.0.0.1:59998/0",
         enabled=True,
-        max_buffer_size=5
+        max_buffer_size=5,
+        socket_timeout=0.1,
+        socket_connect_timeout=0.1
     )
     assert pub.enabled
 
@@ -34,6 +37,7 @@ def test_redis_publisher_offline_failure_isolation():
     assert len(buffered) == 2
     assert buffered[0]["event_type"] == "case_start"
     assert buffered[1]["event_type"] == "case_complete"
+    pub.close()
 
 
 def test_redis_publisher_redaction():
@@ -41,7 +45,8 @@ def test_redis_publisher_redaction():
         stream_key="sim:events",
         url="redis://127.0.0.1:59998/0",
         enabled=True,
-        redact_keys=["auth_token", "secret"]
+        redact_keys=["auth_token", "secret"],
+        socket_timeout=0.1
     )
 
     pub.publish({
@@ -56,6 +61,7 @@ def test_redis_publisher_redaction():
     assert buffered[0]["auth_token"] == "[REDACTED]"
     assert buffered[0]["secret"] == "[REDACTED]"
     assert buffered[0]["public_data"] == "accessible"
+    pub.close()
 
 
 def test_redis_publisher_xadd_mock():
@@ -87,6 +93,34 @@ def test_redis_publisher_xadd_mock():
     pub.close()
 
 
+def test_redis_publisher_non_blocking_on_hanging_redis():
+    class SlowHangingRedisClient:
+        def xadd(self, stream_key, fields, maxlen=None, approximate=True):
+            # Simulate a 2-second network stall or firewall timeout
+            time.sleep(2.0)
+            raise TimeoutError("Redis socket timeout")
+
+        def close(self):
+            pass
+
+    pub = RedisStreamEventPublisher(
+        stream_key="hanging:stream",
+        client_factory=lambda url: SlowHangingRedisClient(),
+        socket_timeout=0.2,
+        socket_connect_timeout=0.2
+    )
+
+    t0 = time.monotonic()
+    # publish() must return immediately (non-blocking) in < 50ms despite the slow Redis client
+    pub.publish({"event_type": "step", "step_id": 1})
+    pub.publish({"event_type": "step", "step_id": 2})
+    elapsed = time.monotonic() - t0
+
+    assert elapsed < 0.1, f"publish() took {elapsed:.3f}s; expected non-blocking < 0.1s"
+    assert len(pub.get_buffered_events()) == 2
+    pub.close()
+
+
 def test_redis_publisher_campaign_integration(tmp_path: Path):
     template = tmp_path / "deck.template"
     template.write_text("PARAM = #PARAM#\n")
@@ -102,7 +136,8 @@ def test_redis_publisher_campaign_integration(tmp_path: Path):
     redis_pub = RedisStreamEventPublisher(
         stream_key="campaign:events",
         url="redis://127.0.0.1:59998/0",
-        max_buffer_size=10
+        max_buffer_size=10,
+        socket_timeout=0.1
     )
     campaign = Campaign(manifest, publisher=redis_pub)
     results = campaign.run()
@@ -113,3 +148,4 @@ def test_redis_publisher_campaign_integration(tmp_path: Path):
     event_types = [e.get("event_type") for e in buffered]
     assert "campaign_start" in event_types
     assert "campaign_complete" in event_types
+    redis_pub.close()
