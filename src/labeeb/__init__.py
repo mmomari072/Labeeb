@@ -75,6 +75,7 @@ from .bundle import (
     load_analysis_bundle,
 )
 from .results import CaseResult, CampaignStateStore, ExecutionStatusRegistry, StatusRegistry, export_case_results
+from .outputs import OutputCatalog, OutputRecord
 from .report import write_html_report
 from .logging_config import CaseLoggerAdapter, configure_logging
 from .utils.file_io import File, evaluate_expression, format_value
@@ -88,7 +89,7 @@ __all__ = [
     "CsvHarvester", "StatusRegistry", "ExecutionStatusRegistry", "EventPublisher",
     "CouplingError", "Database", "DatabaseError", "DiscreteSampling", "ExecutionBackend",
     "ExecutionEvent", "ExecutionResult", "ExtractionError", "FOATConstructor", "File", "Flag", "FlagsMap",
-    "Harvester", "InMemorySharedBackend", "JsonHarvester", "JsonlEventPublisher", "LabeebError", "LiveObserver", "LivePlot", "LocalExecutionBackend", "NullEventPublisher", "PlotObserver", "PublisherError", "RedisStreamEventPublisher", "RegexHarvester", "SamplingError", "SharedMemoryBackend", "SharedMemoryError", "TemplateError", "WebSocketEventPublisher", "correlation_analysis",
+    "Harvester", "InMemorySharedBackend", "JsonHarvester", "JsonlEventPublisher", "LabeebError", "LiveObserver", "LivePlot", "LocalExecutionBackend", "NullEventPublisher", "OutputCatalog", "OutputRecord", "PlotObserver", "PublisherError", "RedisStreamEventPublisher", "RegexHarvester", "SamplingError", "SharedMemoryBackend", "SharedMemoryError", "TemplateError", "WebSocketEventPublisher", "correlation_analysis",
     "append_execution_event", "evaluate_expression", "export_analysis_bundle", "export_case_results", "export_execution_events", "extract_csv", "extract_json", "extract_regex", "format_value", "halton_sample",
     "latin_hypercube_sample", "load_analysis_bundle", "load_manifest", "morris_screening", "normal_sample", "product",
     "run_extractor", "sample", "sobol_indices", "uniform_sample", "wilks_sample_size",

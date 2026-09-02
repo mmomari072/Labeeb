@@ -298,6 +298,44 @@ callable_harvester = CallableHarvester(
 )
 ```
 
+### Durable Output Catalog (`labeeb.outputs`)
+`OutputCatalog` persists an append-only SQLite ledger linking every (case, attempt)
+execution to its harvested metrics, artifacts, stdout/stderr files, and status —
+surviving process restarts and retries. Unlike `CampaignStateStore` (which keeps
+only the latest result per case), the catalog never overwrites: each attempt is a
+new row. It can share a SQLite file with `CampaignStateStore` without conflict.
+
+```python
+from labeeb import OutputCatalog
+from labeeb.case import Case
+
+catalog = OutputCatalog("campaign.sqlite")   # coexists with CampaignStateStore
+case = Case("thermal_case", output_files={})
+# ... configure database, templates, exe_cmd ...
+case.launch()                                # run case_0, case_1, ...
+
+# Catalog the most recent attempt of a launched case, linking metrics/artifacts
+catalog.record_from_case(
+    case,
+    metrics={"rho": 18.5},                   # harvested outputs for this run
+    artifacts={"deck": "runs/case_0/deck.inp"},
+)
+# Or record an arbitrary attempt directly:
+from labeeb.outputs import OutputRecord
+catalog.record(OutputRecord(case_id=0, attempt=1, status="SUCCESS", exit_code=0))
+
+rows = catalog.get(0)          # all attempts for case 0, oldest first
+latest = catalog.latest(0)     # most recent attempt record
+catalog.summary()              # {"success": 2, "failed": 1, ...}
+catalog.export("catalog.csv")  # CSV / JSON / Parquet export
+```
+
+Each record stores `case_id`, `attempt`, `unit`, `status`, redacted `command`,
+`exit_code`, `duration_seconds`, `metrics`, `artifacts`, `stdout_path` /
+`stderr_path` (when `capture_output` wrote them), `stdout_bytes`/`stderr_bytes`,
+failure `message`, and `started_at`/`ended_at` timing. Command and message
+strings are redacted before persistence.
+
 ---
 
 ## 7. Stateful Campaigns & Status Registry

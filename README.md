@@ -151,6 +151,12 @@ with CampaignStateStore("campaign_state.sqlite") as state:
         print("reuse cached result")
 ```
 
+`OutputCatalog` (`labeeb.outputs`) keeps an append-only, durable per-attempt
+ledger alongside the state store: each (case, attempt) execution links harvested
+metrics, artifact paths, stdout/stderr files, byte counts, redacted command, and
+status — nothing is overwritten, so retries and failures stay queryable and
+exportable to CSV/JSON/Parquet.
+
 ### B3. Execution Backends (`labeeb.execution`)
 `Case` uses an injectable execution backend. The built-in local backend runs
 shell commands with an explicit case directory, timeout, optional log file,
