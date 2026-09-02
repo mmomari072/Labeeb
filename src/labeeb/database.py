@@ -4,6 +4,7 @@ Provides a pure Python list/dict subclass implementation backed internally by Pa
 for element-wise calculations, Excel/CSV/Parquet importing/exporting, and robust validation.
 """
 
+import ast
 import copy
 import datetime
 import json
@@ -11,13 +12,30 @@ import logging
 import operator
 import os
 import pickle
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Sequence, Set, Tuple, Union
 
 import pandas as pd
 
 from .exceptions import DatabaseError
+from .utils.file_io import evaluate_expression
 
 logger = logging.getLogger(__name__)
+
+
+def _extract_expression_dependencies(expr: str, available_columns: Sequence[str]) -> List[str]:
+    """Extract column names referenced in a mathematical expression."""
+    try:
+        tree = ast.parse(expr.strip(), mode="eval")
+    except SyntaxError as exc:
+        raise DatabaseError(f"Invalid syntax in derived expression '{expr}': {exc}") from exc
+
+    available_set = set(available_columns)
+    deps: List[str] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name):
+            if node.id in available_set and node.id not in deps and node.id != "__db_index__":
+                deps.append(node.id)
+    return deps
 
 
 def str_to_num(val: Any, target_type: Callable[[Any], Any] = float) -> Any:
@@ -381,6 +399,14 @@ class Attribute(list):
         self.extend(s.tolist())
         return self
 
+    def tolist(self) -> List[Any]:
+        """Convert Attribute to a standard Python list."""
+        return list(self)
+
+    def to_list(self) -> List[Any]:
+        """Alias for tolist."""
+        return list(self)
+
     def statistics(self) -> pd.Series:
         """Return descriptive statistics of the attribute values using Pandas."""
         return pd.Series(self).describe()
@@ -510,30 +536,83 @@ class Database(dict):
     def add_derived_attribute(
         self,
         name: str,
-        function: Callable[[Dict[str, Any]], Any],
-        dependencies: List[str],
+        function: Union[str, Callable[[Dict[str, Any]], Any], Callable[..., Any]],
+        dependencies: Optional[Sequence[str]] = None,
+        *,
+        unit: Optional[str] = None,
+        description: Optional[str] = None,
+        Type: Optional[Callable[[Any], Any]] = None,
+        vectorized: bool = False,
     ) -> "Database":
-        """Add a computed column evaluated from row values.
+        """Add a computed column evaluated from existing database attributes.
 
-        ``function`` receives a mapping of column names to values for one row.
-        Derived columns are recomputed when a source column is replaced.
+        Supports mathematical string expressions (e.g. ``"y + 1"``, ``"2 * a + sin(b)"``)
+        or callable functions. Dependencies can be explicitly provided or automatically
+        inferred from string expressions.
+
+        Args:
+            name: Column name for the derived attribute.
+            function: String expression or callable function.
+            dependencies: Optional sequence of column names the expression depends on.
+            unit: Optional physical unit metadata string.
+            description: Optional descriptive text.
+            Type: Optional data type constructor.
+            vectorized: If True, evaluates function vectorially over full attribute columns.
+
+        Returns:
+            Self instance with the computed attribute added.
+
+        Raises:
+            DatabaseError: If dependencies are missing, invalid, circular, or evaluation fails.
         """
-        if not isinstance(name, str) or not name:
+        if not isinstance(name, str) or not name.strip():
             raise DatabaseError("Derived attribute name must be a non-empty string")
-        if not callable(function):
-            raise DatabaseError("Derived attribute function must be callable")
-        if not dependencies or any(dep not in self or dep == "__db_index__" for dep in dependencies):
-            raise DatabaseError(f"Derived attribute '{name}' has missing dependencies")
-        if name in dependencies:
-            raise DatabaseError(f"Derived attribute '{name}' cannot depend on itself")
+
+        clean_name = name.strip()
+        expr_str: Optional[str] = None
+        func_callable: Optional[Callable[..., Any]] = None
+
+        if isinstance(function, str):
+            expr_str = function.strip()
+            if not expr_str:
+                raise DatabaseError("Derived attribute expression string must not be empty")
+            if dependencies is None:
+                deps_list = _extract_expression_dependencies(expr_str, list(self.keys()))
+            else:
+                deps_list = list(dependencies)
+        elif callable(function):
+            func_callable = function
+            if dependencies is None:
+                raise DatabaseError(
+                    f"Explicit dependencies list is required when creating derived attribute '{clean_name}' with a callable"
+                )
+            deps_list = list(dependencies)
+        else:
+            raise DatabaseError("Derived attribute function must be a string expression or callable")
+
+        if not deps_list and not (isinstance(function, str) and expr_str):
+            raise DatabaseError(f"Derived attribute '{clean_name}' has missing dependencies")
+
+        missing_deps = [dep for dep in deps_list if dep not in self or dep == "__db_index__"]
+        if missing_deps:
+            raise DatabaseError(
+                f"Derived attribute '{clean_name}' has missing dependencies: {', '.join(missing_deps)}"
+            )
+
+        if clean_name in deps_list:
+            raise DatabaseError(f"Derived attribute '{clean_name}' cannot depend on itself")
+
         graph = {key: set(spec["dependencies"]) for key, spec in self._derived_specs.items()}
-        graph[name] = set(dependencies)
-        visiting: set = set()
-        visited: set = set()
+        graph[clean_name] = set(deps_list)
+
+        visiting: Set[str] = set()
+        visited: Set[str] = set()
 
         def visit(node: str) -> None:
             if node in visiting:
-                raise DatabaseError("Circular derived attribute dependency detected")
+                raise DatabaseError(
+                    f"Circular derived attribute dependency detected involving '{node}'"
+                )
             if node in visited:
                 return
             visiting.add(node)
@@ -543,24 +622,125 @@ class Database(dict):
             visiting.remove(node)
             visited.add(node)
 
-        visit(name)
-        self._derived_specs[name] = {"function": function, "dependencies": list(dependencies)}
-        self[name] = self._evaluate_derived(name)
+        visit(clean_name)
+
+        self._derived_specs[clean_name] = {
+            "function": func_callable,
+            "expression": expr_str,
+            "dependencies": deps_list,
+            "unit": unit,
+            "description": description,
+            "Type": Type,
+            "vectorized": vectorized,
+        }
+
+        self[clean_name] = self._evaluate_derived(clean_name)
         return self
 
+    def _get_topological_derived_order(self) -> List[str]:
+        """Compute topological evaluation order of derived attributes."""
+        order: List[str] = []
+        visited: Set[str] = set()
+        visiting: Set[str] = set()
+
+        def dfs(node: str) -> None:
+            if node in visited:
+                return
+            visiting.add(node)
+            spec = self._derived_specs.get(node)
+            if spec:
+                for dep in spec["dependencies"]:
+                    if dep in self._derived_specs and dep not in visited:
+                        dfs(dep)
+            visiting.remove(node)
+            visited.add(node)
+            order.append(node)
+
+        for node in self._derived_specs:
+            if node not in visited:
+                dfs(node)
+        return order
+
     def _evaluate_derived(self, name: str) -> Attribute:
+        """Evaluate a single derived attribute across all rows."""
         spec = self._derived_specs[name]
         row_count = self._get_max_column_length()
-        values = [spec["function"](self.get_row(index)) for index in range(row_count)]
-        if values and isinstance(values[0], (list, tuple, Attribute)):
-            values = list(values[0])
-        return Attribute(name=name, data=values, Type=None)
+
+        try:
+            if spec.get("vectorized", False):
+                if spec["expression"] is not None:
+                    context = {dep: pd.Series(self[dep]) for dep in spec["dependencies"]}
+                    res = evaluate_expression(spec["expression"], context)
+                    if isinstance(res, (pd.Series, Attribute)):
+                        values = res.tolist()
+                    elif isinstance(res, (list, tuple)):
+                        values = list(res)
+                    else:
+                        values = [res] * row_count
+                else:
+                    res = spec["function"](self)
+                    if isinstance(res, (pd.Series, Attribute)):
+                        values = res.tolist()
+                    elif isinstance(res, (list, tuple)):
+                        values = list(res)
+                    else:
+                        values = [res] * row_count
+            else:
+                values = []
+                expr = spec["expression"]
+                func = spec["function"]
+                for index in range(row_count):
+                    row = self.get_row(index)
+                    if expr is not None:
+                        val = evaluate_expression(expr, row)
+                    else:
+                        val = func(row)
+                    values.append(val)
+        except DatabaseError:
+            raise
+        except Exception as exc:
+            raise DatabaseError(
+                f"Evaluation of derived attribute '{name}' failed: {exc}"
+            ) from exc
+
+        return Attribute(
+            name=name,
+            data=values,
+            unit=spec.get("unit"),
+            description=spec.get("description"),
+            Type=spec.get("Type"),
+        )
 
     def _refresh_derived(self) -> None:
-        for name in self._derived_specs:
+        """Recompute all derived attributes in topological dependency order."""
+        for name in self._get_topological_derived_order():
             super().__setitem__(name, self._evaluate_derived(name))
         if self._derived_specs:
             self.refresh_index()
+
+    def remove_derived_attribute(self, name: str, drop_column: bool = True) -> "Database":
+        """Remove a derived attribute definition and optionally drop its column.
+
+        Args:
+            name: Name of the derived attribute.
+            drop_column: If True, remove the column from the database.
+
+        Raises:
+            DatabaseError: If another derived attribute depends on this one.
+        """
+        if name not in self._derived_specs:
+            raise DatabaseError(f"'{name}' is not a registered derived attribute")
+
+        for other_name, spec in self._derived_specs.items():
+            if other_name != name and name in spec["dependencies"]:
+                raise DatabaseError(
+                    f"Cannot remove derived attribute '{name}' because '{other_name}' depends on it"
+                )
+
+        del self._derived_specs[name]
+        if drop_column and name in self:
+            del self[name]
+        return self
 
     def create_attribute(self, *names: str) -> "Database":
         """Create empty attribute columns by name."""
@@ -585,12 +765,44 @@ class Database(dict):
             if name not in getattr(self, "_derived_specs", {}):
                 self._refresh_derived()
 
+    def __delitem__(self, key: str) -> None:
+        if getattr(self, "_derived_specs", None):
+            for name, spec in self._derived_specs.items():
+                if name != key and key in spec["dependencies"]:
+                    raise DatabaseError(
+                        f"Cannot delete column '{key}' because derived attribute '{name}' depends on it"
+                    )
+            if key in self._derived_specs:
+                del self._derived_specs[key]
+        super().__delitem__(key)
+
     def derived_attributes(self) -> Dict[str, Dict[str, Any]]:
         """Return metadata for computed columns without exposing callables."""
         return {
-            name: {"dependencies": list(spec["dependencies"])}
+            name: {
+                "dependencies": list(spec["dependencies"]),
+                "expression": spec.get("expression"),
+                "unit": spec.get("unit"),
+                "description": spec.get("description"),
+                "vectorized": spec.get("vectorized", False),
+            }
             for name, spec in self._derived_specs.items()
         }
+
+    def set_row(self, row_id: int, values: Dict[str, Any]) -> "Database":
+        """Update values in a single row by index and recompute derived columns.
+
+        Args:
+            row_id: Row index to update.
+            values: Dictionary mapping column names to new values.
+        """
+        for col_name, val in values.items():
+            if col_name not in self:
+                self[col_name] = Attribute(name=col_name, data=[])
+            self[col_name][row_id] = val
+        self.refresh_index()
+        self._refresh_derived()
+        return self
 
     def refresh_index(self) -> "Database":
         """Align all column lengths, padding short ones and updating the database index."""
@@ -836,6 +1048,7 @@ class Database(dict):
             self[col_name][row_id] = val
 
         self.refresh_index()
+        self._refresh_derived()
         return self
 
     def size(self) -> Tuple[int, int]:

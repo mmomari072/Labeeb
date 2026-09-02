@@ -58,8 +58,12 @@ is_high = rho > 19.0  # Returns Attribute list of booleans
 db = Database(name="reactor_params")
 db.add_attribute(rho, wf)
 
+# Declarative Derived Attributes (e.g. power calculation, auto-dependency tracking)
+db.add_derived_attribute("RHO_KG", "RHO * 1000.0", unit="kg/m3")
+db.add_derived_attribute("SCALED_WF", lambda row: row["WF"] * 100.0, dependencies=["WF"], unit="%")
+
 # Fetch rows
-row_0 = db.get_row(0)  # {'RHO': 18.5, 'WF': 0.01}
+row_0 = db.get_row(0)  # {'RHO': 18.5, 'WF': 0.01, 'RHO_KG': 18500.0, 'SCALED_WF': 1.0}
 
 # Import and Export tabular CSV/Excel data
 db.export_to_file("data.csv")

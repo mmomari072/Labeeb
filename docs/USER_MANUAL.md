@@ -75,7 +75,11 @@ db.add_attribute(
 # Access rows as standard dictionaries
 row_0 = db.get_row(0)  # {"POWER": 10.0, "FLOW": 1200.0}
 
-# Update rows in-place
+# Declarative Derived Attributes with auto-tracked dependencies & topological updates
+db.add_derived_attribute("POWER_KW", "POWER * 1000.0", unit="kW")
+db.add_derived_attribute("SPECIFIC_FLOW", lambda row: row["FLOW"] / row["POWER"], dependencies=["FLOW", "POWER"], unit="m3/(h*MW)")
+
+# Update rows in-place (automatically triggers cascading topological recomputations)
 db.update_row(row_id=1, data={"POWER": 16.5})
 
 # Export tabular data (.csv, .xlsx, .parquet, .json)

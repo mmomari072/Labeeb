@@ -158,11 +158,109 @@ def test_database_derived_attribute_tracks_dependencies_and_recomputes():
     assert list(db["x"]) == [11, 21, 31]
 
 
+def test_database_derived_attribute_string_expressions():
+    db = Database(data={"power_mw": [10.0, 20.0, 50.0], "efficiency": [0.33, 0.35, 0.40]})
+
+    # Auto-inferred dependencies from string expression
+    db.add_derived_attribute(
+        "electric_power",
+        "power_mw * efficiency",
+        unit="MWe",
+        description="Generated electric power",
+    )
+
+    assert list(db["electric_power"]) == pytest.approx([3.3, 7.0, 20.0])
+    assert db["electric_power"].unit == "MWe"
+    assert db.derived_attributes()["electric_power"]["dependencies"] == ["power_mw", "efficiency"]
+
+    # Recomputing when power_mw changes
+    db["power_mw"] = [100.0, 200.0, 500.0]
+    assert list(db["electric_power"]) == pytest.approx([33.0, 70.0, 200.0])
+
+
+def test_database_chained_topological_derived_attributes():
+    db = Database(data={"a": [1, 2, 3]})
+
+    # a -> b = a + 1 -> c = b * 2 -> d = c + a
+    db.add_derived_attribute("b", "a + 1")
+    db.add_derived_attribute("c", "b * 2")
+    db.add_derived_attribute("d", "c + a")
+
+    assert list(db["b"]) == [2, 3, 4]
+    assert list(db["c"]) == [4, 6, 8]
+    assert list(db["d"]) == [5, 8, 11]
+
+    # Recompute cascading updates correctly
+    db["a"] = [10, 20, 30]
+    assert list(db["b"]) == [11, 21, 31]
+    assert list(db["c"]) == [22, 42, 62]
+    assert list(db["d"]) == [32, 62, 92]
+
+
+def test_database_derived_attribute_set_row_and_update_row():
+    db = Database(data={"y": [1, 2, 3]})
+    db.add_derived_attribute("x", "y * 10")
+    assert list(db["x"]) == [10, 20, 30]
+
+    db.set_row(1, {"y": 5})
+    assert list(db["x"]) == [10, 50, 30]
+
+    db.update_row(2, {"y": 9})
+    assert list(db["x"]) == [10, 50, 90]
+
+
+def test_database_derived_attribute_vectorized():
+    db = Database(data={"a": [1, 2, 3], "b": [4, 5, 6]})
+    db.add_derived_attribute(
+        "sum_ab",
+        lambda database: database["a"] + database["b"],
+        dependencies=["a", "b"],
+        vectorized=True,
+    )
+    assert list(db["sum_ab"]) == [5, 7, 9]
+
+    db["a"] = [10, 20, 30]
+    assert list(db["sum_ab"]) == [14, 25, 36]
+
+
 def test_database_rejects_missing_and_circular_derived_dependencies():
     db = Database(data={"y": [1]})
-    with pytest.raises(DatabaseError):
+    with pytest.raises(DatabaseError, match="missing dependencies"):
         db.add_derived_attribute("x", lambda row: row["z"], dependencies=["z"])
 
+    with pytest.raises(DatabaseError, match="cannot depend on itself"):
+        db.add_derived_attribute("y", "y + 1", dependencies=["y"])
+
     db.add_derived_attribute("x", lambda row: row["y"], dependencies=["y"])
-    with pytest.raises(DatabaseError):
+    with pytest.raises(DatabaseError, match="Circular derived attribute dependency"):
         db.add_derived_attribute("y", lambda row: row["x"], dependencies=["x"])
+
+
+def test_database_deletion_protection_and_remove_derived():
+    db = Database(data={"y": [1, 2, 3]})
+    db.add_derived_attribute("x", "y + 1")
+    db.add_derived_attribute("z", "x * 2")
+
+    # Cannot delete column if derived attribute depends on it
+    with pytest.raises(DatabaseError, match="Cannot delete column"):
+        del db["y"]
+
+    with pytest.raises(DatabaseError, match="Cannot delete column"):
+        del db["x"]
+
+    # Cannot remove derived attribute x while z depends on it
+    with pytest.raises(DatabaseError, match="Cannot remove derived attribute"):
+        db.remove_derived_attribute("x")
+
+    # Successfully remove z then x
+    db.remove_derived_attribute("z")
+    assert "z" not in db
+    assert "z" not in db.derived_attributes()
+
+    db.remove_derived_attribute("x")
+    assert "x" not in db
+    assert "x" not in db.derived_attributes()
+
+    # Now y can be deleted cleanly
+    del db["y"]
+    assert "y" not in db
