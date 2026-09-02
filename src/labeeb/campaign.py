@@ -132,6 +132,7 @@ class Campaign:
         state_path: Optional[Union[str, Path]] = None,
         status_registry: Optional[Any] = None,
         memory: Optional[Any] = None,
+        publisher: Optional[Any] = None,
     ) -> None:
         if not isinstance(manifest, CampaignManifest):
             raise CampaignError("Campaign requires a validated CampaignManifest")
@@ -145,6 +146,7 @@ class Campaign:
 
         self.status_registry = status_registry if status_registry is not None else StatusRegistry()
         self.memory: CampaignMemory = memory if memory is not None else CampaignMemory()
+        self.publisher = publisher
 
     @classmethod
     def from_manifest(
@@ -152,9 +154,10 @@ class Campaign:
         path: Union[str, Path],
         state_path: Optional[Union[str, Path]] = None,
         memory: Optional[Any] = None,
+        publisher: Optional[Any] = None,
     ) -> "Campaign":
         """Load a manifest and return an executable campaign object."""
-        return cls(load_manifest(path), state_path=state_path, memory=memory)
+        return cls(load_manifest(path), state_path=state_path, memory=memory, publisher=publisher)
 
     def export_status(self, path: Union[str, Path]) -> Any:
         """Export the campaign's status registry to CSV, JSON, or Parquet."""
@@ -187,9 +190,6 @@ class Campaign:
         self, event_type: str, cwd: Union[str, Path], case_id: Optional[int] = None,
         attempt: int = 0, status: str = "INFO", message: Optional[str] = None,
     ) -> None:
-        events_file = self.manifest.execution.get("events_file")
-        if not events_file:
-            return
         from .execution import ExecutionEvent, append_execution_event
 
         now = datetime.now(timezone.utc).isoformat()
@@ -198,6 +198,16 @@ class Campaign:
             duration_seconds=0.0, started_at=now, ended_at=now, case_id=case_id,
             unit=self.manifest.name, attempt=attempt, event_type=event_type, message=message,
         )
+        if self.publisher is not None:
+            try:
+                self.publisher.publish(event)
+            except Exception:
+                pass
+
+        events_file = self.manifest.execution.get("events_file")
+        if not events_file:
+            return
+
         event_path = Path(events_file)
         if not event_path.is_absolute():
             event_path = Path(cwd).parent / event_path
@@ -276,16 +286,21 @@ class Campaign:
                     result = CaseResult(
                         case_id, parameters, "FAILED", None, time.monotonic() - started, failure=str(exc)
                     )
-                events_file = self.manifest.execution.get("events_file")
-                if events_file and case.execution_history:
-                    from .execution import ExecutionEvent, append_execution_event
-
+                if case.execution_history:
                     event_record = case.execution_history[-1].get("execution_event")
                     if event_record:
-                        event_path = Path(events_file)
-                        if not event_path.is_absolute():
-                            event_path = Path(case.main_dir) / event_path
-                        append_execution_event(ExecutionEvent.from_dict(event_record), event_path)
+                        from .execution import ExecutionEvent, append_execution_event
+                        if self.publisher is not None:
+                            try:
+                                self.publisher.publish(ExecutionEvent.from_dict(event_record))
+                            except Exception:
+                                pass
+                        events_file = self.manifest.execution.get("events_file")
+                        if events_file:
+                            event_path = Path(events_file)
+                            if not event_path.is_absolute():
+                                event_path = Path(case.main_dir) / event_path
+                            append_execution_event(ExecutionEvent.from_dict(event_record), event_path)
                 self._append_lifecycle_event(
                     "case_complete" if result.status == "SUCCESS" else "case_failure",
                     run_root, case_id=case_id, attempt=attempt, status=result.status, message=result.failure,

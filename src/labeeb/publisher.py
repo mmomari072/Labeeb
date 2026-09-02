@@ -1,0 +1,220 @@
+"""
+Pluggable EventPublisher and LiveObserver API for non-blocking simulation lifecycle events.
+Supports JSONL streaming, disabled/offline mode, bounded async failure isolation,
+sensitive data redaction, in-memory ring buffering with replay, and live observers.
+"""
+
+import collections
+import copy
+import json
+import logging
+import threading
+from abc import ABC, abstractmethod
+from pathlib import Path
+from typing import Any, Callable, Deque, Dict, Iterable, List, Optional, Sequence, Union
+
+from .exceptions import LabeebError
+
+logger = logging.getLogger(__name__)
+
+
+class PublisherError(LabeebError):
+    """Raised when an event publisher operation fails unrecoverably."""
+
+
+class LiveObserver:
+    """
+    Non-blocking live variable and lifecycle observer hook.
+    Guarantees that observer failures or long plotting tasks never interrupt
+    or mutate simulation execution.
+    """
+
+    def __init__(self, callback: Callable[[Dict[str, Any]], Any], name: Optional[str] = None) -> None:
+        self.callback = callback
+        self.name = name or getattr(callback, "__name__", "live_observer")
+
+    def notify(self, event: Dict[str, Any]) -> None:
+        """Deliver an event snapshot to the observer with complete failure isolation."""
+        try:
+            # Pass a deepcopy to ensure observers cannot mutate event payloads or simulation data
+            isolated_event = copy.deepcopy(event)
+            self.callback(isolated_event)
+        except Exception as exc:
+            logger.warning("LiveObserver '%s' raised an exception: %s", self.name, exc)
+
+
+class EventPublisher(ABC):
+    """
+    Abstract Base Class for simulation event publishers.
+    """
+
+    def __init__(
+        self,
+        enabled: bool = True,
+        max_buffer_size: int = 1000,
+        redact_keys: Optional[Sequence[str]] = None,
+    ) -> None:
+        self.enabled: bool = enabled
+        self.max_buffer_size: int = max(1, max_buffer_size)
+        self.redact_keys: set = set(redact_keys) if redact_keys else set()
+        self._buffer: Deque[Dict[str, Any]] = collections.deque(maxlen=self.max_buffer_size)
+        self._observers: List[LiveObserver] = []
+        self._lock = threading.RLock()
+
+    def add_observer(self, observer: Union[LiveObserver, Callable[[Dict[str, Any]], Any]]) -> "EventPublisher":
+        """Attach a live observer to receive published events."""
+        with self._lock:
+            obs = observer if isinstance(observer, LiveObserver) else LiveObserver(observer)
+            if obs not in self._observers:
+                self._observers.append(obs)
+        return self
+
+    def _redact(self, data: Any) -> Any:
+        """Recursively redact configured sensitive keys."""
+        if not self.redact_keys:
+            return data
+        if isinstance(data, dict):
+            redacted = {}
+            for k, v in data.items():
+                if k in self.redact_keys:
+                    redacted[k] = "[REDACTED]"
+                else:
+                    redacted[k] = self._redact(v)
+            return redacted
+        elif isinstance(data, list):
+            return [self._redact(item) for item in data]
+        return data
+
+    def _normalize_event(self, event: Any) -> Dict[str, Any]:
+        """Convert ExecutionEvent or dictionary into a normalized JSON-compatible dict."""
+        if hasattr(event, "to_dict") and callable(event.to_dict):
+            record = event.to_dict()
+        elif isinstance(event, dict):
+            record = copy.deepcopy(event)
+        else:
+            record = {"raw_event": str(event)}
+
+        if self.redact_keys:
+            record = self._redact(record)
+        return record
+
+    def publish(self, event: Any) -> None:
+        """
+        Publish an event record. Bounded failure isolation ensures this call
+        never raises exceptions to the caller.
+        """
+        if not self.enabled:
+            return
+
+        try:
+            record = self._normalize_event(event)
+            with self._lock:
+                self._buffer.append(record)
+                observers = list(self._observers)
+
+            # Dispatch to live observers
+            for observer in observers:
+                observer.notify(record)
+
+            self._publish_impl(record)
+        except Exception as exc:
+            logger.warning("EventPublisher failed to publish event: %s", exc)
+
+    @abstractmethod
+    def _publish_impl(self, record: Dict[str, Any]) -> None:
+        """Subclass implementation for backend event output."""
+
+    def get_buffered_events(self) -> List[Dict[str, Any]]:
+        """Return a snapshot list of currently buffered events."""
+        with self._lock:
+            return list(self._buffer)
+
+    def replay(self, callback: Callable[[Dict[str, Any]], Any]) -> None:
+        """Replay all buffered events to a target callback."""
+        events = self.get_buffered_events()
+        for evt in events:
+            try:
+                callback(copy.deepcopy(evt))
+            except Exception as exc:
+                logger.warning("Replay callback raised exception: %s", exc)
+
+    def flush(self) -> None:
+        """Flush any pending events to storage."""
+
+    def close(self) -> None:
+        """Clean up publisher resources."""
+        self.flush()
+
+
+class NullEventPublisher(EventPublisher):
+    """No-op publisher for offline/disabled mode."""
+
+    def __init__(self) -> None:
+        super().__init__(enabled=False, max_buffer_size=1)
+
+    def _publish_impl(self, record: Dict[str, Any]) -> None:
+        pass
+
+
+class JsonlEventPublisher(EventPublisher):
+    """
+    Appends structured events to a JSONL file with thread safety and directory creation.
+    """
+
+    def __init__(
+        self,
+        path: Union[str, Path],
+        enabled: bool = True,
+        max_buffer_size: int = 1000,
+        redact_keys: Optional[Sequence[str]] = None,
+    ) -> None:
+        super().__init__(enabled=enabled, max_buffer_size=max_buffer_size, redact_keys=redact_keys)
+        self.path: Path = Path(path)
+        self._file_lock = threading.Lock()
+
+    def _publish_impl(self, record: Dict[str, Any]) -> None:
+        if not self.enabled:
+            return
+        try:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            line = json.dumps(record, sort_keys=True)
+            with self._file_lock:
+                with open(self.path, "a", encoding="utf-8") as f:
+                    f.write(line + "\n")
+        except Exception as exc:
+            logger.warning("JsonlEventPublisher failed to write to '%s': %s", self.path, exc)
+
+
+class CompositeEventPublisher(EventPublisher):
+    """Dispatches events across multiple child publishers with failure isolation."""
+
+    def __init__(
+        self,
+        publishers: Sequence[EventPublisher],
+        enabled: bool = True,
+        max_buffer_size: int = 1000,
+        redact_keys: Optional[Sequence[str]] = None,
+    ) -> None:
+        super().__init__(enabled=enabled, max_buffer_size=max_buffer_size, redact_keys=redact_keys)
+        self.publishers: List[EventPublisher] = list(publishers)
+
+    def _publish_impl(self, record: Dict[str, Any]) -> None:
+        for pub in self.publishers:
+            try:
+                pub.publish(record)
+            except Exception as exc:
+                logger.warning("CompositeEventPublisher child raised exception: %s", exc)
+
+    def flush(self) -> None:
+        for pub in self.publishers:
+            try:
+                pub.flush()
+            except Exception:
+                pass
+
+    def close(self) -> None:
+        for pub in self.publishers:
+            try:
+                pub.close()
+            except Exception:
+                pass

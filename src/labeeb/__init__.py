@@ -56,6 +56,14 @@ from .shared_memory import (
     SharedMemoryBackend,
     SharedMemoryError,
 )
+from .publisher import (
+    CompositeEventPublisher,
+    EventPublisher,
+    JsonlEventPublisher,
+    LiveObserver,
+    NullEventPublisher,
+    PublisherError,
+)
 from .results import CaseResult, CampaignStateStore, ExecutionStatusRegistry, StatusRegistry, export_case_results
 from .report import write_html_report
 from .logging_config import CaseLoggerAdapter, configure_logging
@@ -66,11 +74,11 @@ __author__ = "Mohammed Omari"
 
 __all__ = [
     "AnalysisError", "Attribute", "CallableHarvester", "Campaign", "CampaignError", "CampaignManifest",
-    "CampaignMemory", "CampaignStateStore", "Case", "CaseExecutionError", "CaseResult", "Coupler",
-    "CsvHarvester", "StatusRegistry", "ExecutionStatusRegistry",
+    "CampaignMemory", "CampaignStateStore", "Case", "CaseExecutionError", "CaseResult", "CompositeEventPublisher", "Coupler",
+    "CsvHarvester", "StatusRegistry", "ExecutionStatusRegistry", "EventPublisher",
     "CouplingError", "Database", "DatabaseError", "DiscreteSampling", "ExecutionBackend",
     "ExecutionEvent", "ExecutionResult", "ExtractionError", "FOATConstructor", "File", "Flag", "FlagsMap",
-    "Harvester", "InMemorySharedBackend", "JsonHarvester", "LabeebError", "LocalExecutionBackend", "RegexHarvester", "SamplingError", "SharedMemoryBackend", "SharedMemoryError", "correlation_analysis",
+    "Harvester", "InMemorySharedBackend", "JsonHarvester", "JsonlEventPublisher", "LabeebError", "LiveObserver", "LocalExecutionBackend", "NullEventPublisher", "PublisherError", "RegexHarvester", "SamplingError", "SharedMemoryBackend", "SharedMemoryError", "correlation_analysis",
     "append_execution_event", "export_case_results", "export_execution_events", "extract_csv", "extract_json", "extract_regex", "halton_sample",
     "latin_hypercube_sample", "load_manifest", "morris_screening", "normal_sample", "product",
     "run_extractor", "sample", "sobol_indices", "uniform_sample", "wilks_sample_size",
