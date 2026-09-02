@@ -38,7 +38,10 @@ class LiveObserver:
         try:
             # Pass a deepcopy to ensure observers cannot mutate event payloads or simulation data
             isolated_event = copy.deepcopy(event)
-            self.callback(isolated_event)
+            if hasattr(self.callback, "notify") and callable(self.callback.notify):
+                self.callback.notify(isolated_event)
+            elif callable(self.callback):
+                self.callback(isolated_event)
         except Exception as exc:
             logger.warning("LiveObserver '%s' raised an exception: %s", self.name, exc)
 
@@ -58,13 +61,18 @@ class EventPublisher(ABC):
         self.max_buffer_size: int = max(1, max_buffer_size)
         self.redact_keys: set = set(redact_keys) if redact_keys else set()
         self._buffer: Deque[Dict[str, Any]] = collections.deque(maxlen=self.max_buffer_size)
-        self._observers: List[LiveObserver] = []
+        self._observers: List[Any] = []
         self._lock = threading.RLock()
 
-    def add_observer(self, observer: Union[LiveObserver, Callable[[Dict[str, Any]], Any]]) -> "EventPublisher":
+    def add_observer(self, observer: Any) -> "EventPublisher":
         """Attach a live observer to receive published events."""
         with self._lock:
-            obs = observer if isinstance(observer, LiveObserver) else LiveObserver(observer)
+            if isinstance(observer, LiveObserver):
+                obs = observer
+            elif hasattr(observer, "notify") and callable(observer.notify):
+                obs = observer
+            else:
+                obs = LiveObserver(observer)
             if obs not in self._observers:
                 self._observers.append(obs)
         return self

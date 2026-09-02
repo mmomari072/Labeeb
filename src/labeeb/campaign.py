@@ -189,6 +189,7 @@ class Campaign:
     def _append_lifecycle_event(
         self, event_type: str, cwd: Union[str, Path], case_id: Optional[int] = None,
         attempt: int = 0, status: str = "INFO", message: Optional[str] = None,
+        details: Optional[Dict[str, Any]] = None,
     ) -> None:
         from .execution import ExecutionEvent, append_execution_event
 
@@ -200,7 +201,8 @@ class Campaign:
         )
         if self.publisher is not None:
             try:
-                self.publisher.publish(event)
+                payload = {**event.to_dict(), **(details or {})}
+                self.publisher.publish(payload)
             except Exception:
                 pass
 
@@ -304,6 +306,7 @@ class Campaign:
                 self._append_lifecycle_event(
                     "case_complete" if result.status == "SUCCESS" else "case_failure",
                     run_root, case_id=case_id, attempt=attempt, status=result.status, message=result.failure,
+                    details={**parameters, "duration": result.duration_seconds},
                 )
                 if result.status != "SUCCESS":
                     campaign_status = "FAILED"
