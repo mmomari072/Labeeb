@@ -1,7 +1,4 @@
-import json
-import time
 from pathlib import Path
-import pytest
 
 from labeeb.publisher import JsonlEventPublisher
 from labeeb.plot import LivePlot, PlotObserver
@@ -41,9 +38,8 @@ def test_plot_observer_throttling(tmp_path: Path):
         update_interval_seconds=10.0
     )
 
-    # First event triggers draw/save
+    # First event triggers a render request
     observer.notify({"event_type": "case_complete", "temp": 300.0})
-    mtime1 = out_img.stat().st_mtime if out_img.exists() else 0
 
     # Immediate second event within interval should be throttled (not redrawn)
     observer.notify({"event_type": "case_complete", "temp": 320.0})

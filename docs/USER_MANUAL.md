@@ -602,6 +602,19 @@ with LivePlot(metrics=["RHO", "WF"], output_path="runs/progress.png") as lp:
     lp.observe({"RHO": 19.2, "WF": 0.02})
 ```
 
+Rendering is **non-blocking**: `observe()`/`notify()` only records metric history
+on the calling thread and wakes an isolated background worker, so plotting never
+delays simulation execution. The worker re-renders the plot image at the
+`update_interval_seconds` cadence, draws through the headless `Agg` backend, and
+is failure-isolated (render/import errors are logged and skipped; a broken
+observer can never raise into the simulation or kill the worker). When the
+observer is `enabled=False`, or no `output_path` is set (history-only mode), no
+worker thread is started at all. `flush()` forces a final frame and waits
+(bounded, max 5 s) for the worker; `close()` flushes the final frame, stops the
+worker, and joins it with the same bounded wait — so `with LivePlot(...)`
+guarantees the finished image exists when the block exits, while `notify()`
+never blocks on the image writer.
+
 ---
 
 ## 10. Reproducible Analysis Bundles (`labeeb.bundle`)
