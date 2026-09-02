@@ -120,6 +120,30 @@ results = campaign.run()
 assert all(result.status == "SUCCESS" for result in results)
 ```
 
+Campaign observability is opt-in: give the campaign an `EventPublisher` plus a
+`live_plot` observer (instance or config mapping) to plot parameters/metrics
+online, and/or an `output_catalog` path to persist one record per executed
+attempt:
+
+```python
+from labeeb import Campaign, PlotObserver, JsonlEventPublisher
+
+campaign = Campaign(
+    load_manifest("campaign.yml"),          # or Campaign.from_manifest(...)
+    publisher=JsonlEventPublisher("runs/events.jsonl"),
+    live_plot=PlotObserver(metrics=["RHO"], output_path="runs/live.png"),
+    output_catalog="catalog.sqlite",        # every attempt: status/metrics/stdout-stderr
+)
+campaign.run()
+```
+
+Failure/output behavior: a failing case is recorded (FAILED status, catalog row,
+`case_failure` event) and never aborts the remaining rows; harvesters declared
+with `optional=True` record `None` instead of failing when their file is absent;
+observer attach/detach/close errors are logged and isolated — plotting can never
+fail the campaign — and the observer is detached and closed even when `run()`
+raises.
+
 Designs can also be generated inside the same Python file:
 
 ```python

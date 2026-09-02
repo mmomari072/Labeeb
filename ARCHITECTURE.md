@@ -112,6 +112,14 @@ explicitly enabled with `LABEEB_SHOW_BANNER` or `print_banner()`.
   * **Invariant**: when a child unit is itself a `Coupler` (nested/sub-coupling), a parent's `check_fn` only ever sees that child *after* its own `run_to_convergence` has finished (converged or exhausted `max_exec`) -- never mid-iteration.
 * **`ConvergenceResult`**: typed dataclass (`unit`, `converged`, `executions`, `residual`) returned by `run_to_convergence()`, with a `to_dict()` for logging/export.
 
+### 2.6 Campaign Observability & Output Subsystem (`labeeb.campaign`, `labeeb.plot`, `labeeb.outputs`, `labeeb.publisher`)
+* **Event stream**: `Campaign.run()` publishes lifecycle events (campaign/case start, per-case command execution, case success/failure, campaign complete) through the injected `EventPublisher` (or its `events_file` JSONL sink). Published payloads carry `case_id`/`attempt`/`status` plus the row's parameters and duration.
+* **Live plotting (opt-in)**: `Campaign(..., live_plot=PlotObserver|mapping)` or manifest `execution.live_plot` attaches the observer to the publisher before the first event and detaches + closes it in an outer `finally` -- cleanup runs even when `run()` raises, so plotting can never leak errors into execution.
+  * `PlotObserver.notify()` records metric history inline and wakes an isolated daemon render worker; rendering is throttled (`update_interval_seconds`), headless (`Agg`), and failure-isolated at the observer and worker layers. Disabled or history-only (no `output_path`) modes start no worker. `flush()` forces a final frame and `close()` flushes + joins the worker with a bounded wait.
+  * `EventPublisher.remove_observer()` is the idempotent detach primitive; add/remove and observer dispatch do not alter publish behavior or buffering.
+* **Durable output catalog (opt-in)**: `output_catalog=` (or `execution.output_catalog`) opens an append-only SQLite `OutputCatalog` for the run; every executed attempt (success, failure, retry) is recorded as one row linking `case_id`/`attempt`/`unit`/`status`/exit code/duration to per-attempt harvested metrics (append-delta), stdout/stderr artifact paths + byte counts, redacted command, failure message, and timing.
+* **Failure/output semantics**: a failing case is recorded (FAILED catalog row, `case_failure` event, status registry) and the run continues with remaining rows; `Campaign.run()` returns all results (including FAILED) instead of raising per-case. Required outputs (`output_files` CSV columns, non-optional harvesters) raise `CaseExecutionError`; `optional=True` harvesters record `None` when the file was not produced. Catalog and plot failures are logged and skipped.
+
 ---
 
 ## 3. Exception Hierarchy
@@ -121,5 +129,10 @@ LabeebError (Base)
 ├── DatabaseError
 ├── SamplingError
 ├── CaseExecutionError
-└── CouplingError
+│   └── TemplateError
+├── CouplingError
+├── ExtractionError
+├── PublisherError
+├── BackupError
+└── SharedMemoryError
 ```

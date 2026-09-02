@@ -458,3 +458,21 @@ def test_section_13_case_study():
         assert bundle_path.exists()
         assert bundle.manifest["name"] == "jrtr_reactor_case_study"
         publisher.close()
+
+
+def test_section_7b_campaign_native_live_plot_example_runs_verbatim():
+    """Execute the USER_MANUAL 'Campaign-Native Live Plotting' example code
+    verbatim so the documented snippet is guaranteed runnable."""
+    manual = Path(__file__).resolve().parent.parent / "docs" / "USER_MANUAL.md"
+    text = manual.read_text(encoding="utf-8")
+
+    marker = "### Campaign-Native Live Plotting (opt-in)"
+    start = text.index(marker)
+    fence = text.index("```python", start) + len("```python")
+    end = text.index("```", fence)
+    example = text[fence:end].strip()
+
+    # The example is self-contained (imports + TemporaryDirectory); run it
+    # verbatim inside the labeeb package context.
+    namespace = {"__name__": "__test_manual_example__"}
+    exec(compile(example, "<USER_MANUAL campaign live-plot example>", "exec"), namespace)

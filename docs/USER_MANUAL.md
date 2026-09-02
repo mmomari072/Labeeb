@@ -404,13 +404,30 @@ manifest — to plot campaign parameters/metrics online while `run()` executes:
 
 ```python
 from labeeb import Campaign, PlotObserver, JsonlEventPublisher
+from labeeb.campaign import CampaignManifest
 
-publisher = JsonlEventPublisher("runs/events.jsonl")
-plot = PlotObserver(metrics=["RHO", "duration"], output_path="runs/live.png")
+# Standalone, runnable example (manifest defines RHO over 3 rows)
+import tempfile
+from pathlib import Path
 
-campaign = Campaign(manifest, publisher=publisher, live_plot=plot)
-campaign.run()          # plot is attached for the run, detached + closed after
-# or: live_plot={"metrics": ["RHO"], "output_path": "runs/live.png"}
+with tempfile.TemporaryDirectory() as tmp:
+    template = Path(tmp) / "deck.inp"
+    template.write_text("RHO = #RHO#\n", encoding="utf-8")
+    manifest = CampaignManifest.from_dict({
+        "name": "plot-demo",
+        "parameters": {"RHO": [18.5, 19.0, 19.5]},
+        "templates": [str(template)],
+        "commands": ["python -c 'print(\"done\")'"],
+        "execution": {"run_dir": str(Path(tmp) / "runs")},
+    })
+
+    publisher = JsonlEventPublisher(str(Path(tmp) / "events.jsonl"))
+    plot = PlotObserver(metrics=["RHO"], output_path=str(Path(tmp) / "live.png"))
+
+    campaign = Campaign(manifest, publisher=publisher, live_plot=plot)
+    campaign.run()          # plot is attached for the run, detached + closed after
+    assert plot.get_history()["RHO"] == [18.5, 19.0, 19.5]
+    # or: live_plot={"metrics": ["RHO"], "output_path": "runs/live.png"}
 ```
 
 The campaign attaches the observer to its publisher before the first event and
