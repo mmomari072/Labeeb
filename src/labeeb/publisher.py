@@ -226,3 +226,106 @@ class CompositeEventPublisher(EventPublisher):
                 pub.close()
             except Exception:
                 pass
+
+
+class WebSocketEventPublisher(EventPublisher):
+    """
+    Optional WebSocket event transport adapter.
+    Publishes streaming lifecycle and execution events to a WebSocket endpoint
+    asynchronously with bounded buffering, failure isolation, and reconnection support.
+    """
+
+    def __init__(
+        self,
+        url: str,
+        enabled: bool = True,
+        max_buffer_size: int = 1000,
+        redact_keys: Optional[Sequence[str]] = None,
+        reconnect_interval_seconds: float = 2.0,
+        timeout: float = 2.0,
+        transport_factory: Optional[Callable[[str], Any]] = None,
+    ) -> None:
+        super().__init__(enabled=enabled, max_buffer_size=max_buffer_size, redact_keys=redact_keys)
+        import queue
+
+        self.url: str = url
+        self.reconnect_interval_seconds: float = reconnect_interval_seconds
+        self.timeout: float = timeout
+        self.transport_factory = transport_factory
+        self._transport: Optional[Any] = None
+        self._queue: queue.Queue = queue.Queue(maxsize=self.max_buffer_size)
+        self._running: bool = False
+        self._worker_thread: Optional[threading.Thread] = None
+
+        if self.enabled:
+            self._start_worker()
+
+    def _start_worker(self) -> None:
+        if self._worker_thread is not None and self._worker_thread.is_alive():
+            return
+        self._running = True
+        self._worker_thread = threading.Thread(
+            target=self._worker_loop, daemon=True, name="WebSocketEventPublisherWorker"
+        )
+        self._worker_thread.start()
+
+    def _get_transport(self) -> Optional[Any]:
+        if self._transport is not None:
+            return self._transport
+        if self.transport_factory is not None:
+            try:
+                self._transport = self.transport_factory(self.url)
+                return self._transport
+            except Exception as exc:
+                logger.debug("WebSocket transport factory failed: %s", exc)
+                return None
+        return None
+
+    def _worker_loop(self) -> None:
+        import queue
+
+        while self._running:
+            try:
+                item = self._queue.get(timeout=0.2)
+            except queue.Empty:
+                continue
+
+            try:
+                transport = self._get_transport()
+                if transport is not None and hasattr(transport, "send"):
+                    msg = json.dumps(item, sort_keys=True)
+                    transport.send(msg)
+            except Exception as exc:
+                logger.debug("WebSocket publish failed: %s", exc)
+                self._transport = None
+            finally:
+                self._queue.task_done()
+
+    def _publish_impl(self, record: Dict[str, Any]) -> None:
+        if not self.enabled:
+            return
+        import queue
+
+        try:
+            self._queue.put_nowait(record)
+        except queue.Full:
+            try:
+                self._queue.get_nowait()
+                self._queue.put_nowait(record)
+            except Exception:
+                pass
+
+    def flush(self) -> None:
+        try:
+            self._queue.join()
+        except Exception:
+            pass
+
+    def close(self) -> None:
+        self._running = False
+        if self._transport is not None and hasattr(self._transport, "close"):
+            try:
+                self._transport.close()
+            except Exception:
+                pass
+        self._transport = None
