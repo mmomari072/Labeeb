@@ -9,6 +9,7 @@ import copy
 import json
 import logging
 import threading
+import time
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any, Callable, Deque, Dict, Iterable, List, Optional, Sequence, Union
@@ -249,13 +250,15 @@ class WebSocketEventPublisher(EventPublisher):
         import queue
 
         self.url: str = url
-        self.reconnect_interval_seconds: float = reconnect_interval_seconds
+        self.reconnect_interval_seconds: float = max(0.01, reconnect_interval_seconds)
         self.timeout: float = timeout
         self.transport_factory = transport_factory
         self._transport: Optional[Any] = None
         self._queue: queue.Queue = queue.Queue(maxsize=self.max_buffer_size)
         self._running: bool = False
         self._worker_thread: Optional[threading.Thread] = None
+        self._last_reconnect_attempt: float = -1e9
+        self._backoff_factor: float = 1.0
 
         if self.enabled:
             self._start_worker()
@@ -272,12 +275,20 @@ class WebSocketEventPublisher(EventPublisher):
     def _get_transport(self) -> Optional[Any]:
         if self._transport is not None:
             return self._transport
+
+        now = time.monotonic()
+        if now - self._last_reconnect_attempt < self.reconnect_interval_seconds * min(self._backoff_factor, 10.0):
+            return None
+
+        self._last_reconnect_attempt = now
         if self.transport_factory is not None:
             try:
                 self._transport = self.transport_factory(self.url)
+                self._backoff_factor = 1.0
                 return self._transport
             except Exception as exc:
                 logger.debug("WebSocket transport factory failed: %s", exc)
+                self._backoff_factor = min(self._backoff_factor * 1.5, 10.0)
                 return None
         return None
 
@@ -295,9 +306,13 @@ class WebSocketEventPublisher(EventPublisher):
                 if transport is not None and hasattr(transport, "send"):
                     msg = json.dumps(item, sort_keys=True)
                     transport.send(msg)
+                else:
+                    # If transport is not available, backoff and drop/buffer
+                    pass
             except Exception as exc:
                 logger.debug("WebSocket publish failed: %s", exc)
                 self._transport = None
+                self._backoff_factor = min(self._backoff_factor * 1.5, 10.0)
             finally:
                 self._queue.task_done()
 
@@ -321,8 +336,15 @@ class WebSocketEventPublisher(EventPublisher):
         except Exception:
             pass
 
-    def close(self) -> None:
+    def close(self, timeout: Optional[float] = None) -> None:
         self._running = False
+        if self._worker_thread is not None and self._worker_thread.is_alive():
+            try:
+                self._worker_thread.join(timeout=timeout if timeout is not None else min(self.timeout, 2.0))
+            except Exception:
+                pass
+            self._worker_thread = None
+
         if self._transport is not None and hasattr(self._transport, "close"):
             try:
                 self._transport.close()
@@ -444,8 +466,15 @@ class RedisStreamEventPublisher(EventPublisher):
         except Exception:
             pass
 
-    def close(self) -> None:
+    def close(self, timeout: Optional[float] = None) -> None:
         self._running = False
+        if self._worker_thread is not None and self._worker_thread.is_alive():
+            try:
+                self._worker_thread.join(timeout=timeout if timeout is not None else min(self.socket_timeout, 2.0))
+            except Exception:
+                pass
+            self._worker_thread = None
+
         if self._client is not None and hasattr(self._client, "close"):
             try:
                 self._client.close()

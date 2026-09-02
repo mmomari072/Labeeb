@@ -35,6 +35,7 @@ def test_websocket_publisher_offline_failure_isolation():
     assert len(buffered) == 2
     assert buffered[0]["event_type"] == "case_start"
     assert buffered[1]["event_type"] == "case_complete"
+    pub.close()
 
 
 def test_websocket_publisher_redaction():
@@ -56,6 +57,7 @@ def test_websocket_publisher_redaction():
     assert buffered[0]["api_token"] == "[REDACTED]"
     assert buffered[0]["secret"] == "[REDACTED]"
     assert buffered[0]["public"] == "visible"
+    pub.close()
 
 
 def test_websocket_publisher_transport_mock():
@@ -88,6 +90,35 @@ def test_websocket_publisher_transport_mock():
     pub.close()
 
 
+def test_websocket_publisher_reconnect_backoff_and_close_join():
+    connect_attempts = []
+
+    def failing_factory(url):
+        connect_attempts.append(time.monotonic())
+        raise ConnectionRefusedError("Server offline")
+
+    pub = WebSocketEventPublisher(
+        "ws://mock-failing/events",
+        reconnect_interval_seconds=0.2,
+        transport_factory=failing_factory,
+    )
+
+    # Publish multiple events while server is offline
+    for i in range(5):
+        pub.publish({"event_type": "step", "i": i})
+
+    time.sleep(0.3)
+    # Reconnect throttling should have prevented excessive connection attempts
+    assert len(connect_attempts) <= 3
+
+    # Close should cleanly signal and join worker thread within bounded timeout
+    assert pub._worker_thread is not None
+    assert pub._worker_thread.is_alive()
+    pub.close(timeout=1.0)
+    assert not pub._running
+    assert pub._worker_thread is None or not pub._worker_thread.is_alive()
+
+
 def test_websocket_publisher_campaign_composite_integration(tmp_path: Path):
     template = tmp_path / "deck.template"
     template.write_text("PARAM = #PARAM#\n")
@@ -111,3 +142,4 @@ def test_websocket_publisher_campaign_composite_integration(tmp_path: Path):
     event_types = [e.get("event_type") for e in buffered]
     assert "campaign_start" in event_types
     assert "campaign_complete" in event_types
+    ws_pub.close()
