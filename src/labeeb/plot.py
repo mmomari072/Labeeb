@@ -46,15 +46,19 @@ class PlotObserver:
         self._dirty: bool = False
 
     def __call__(self, event: Dict[str, Any]) -> None:
-        """Allow PlotObserver to act as a callable observer."""
+        """Allow calling instance directly as a notification callback."""
+        self.notify(event)
+
+    def observe(self, event: Dict[str, Any]) -> None:
+        """Alias for notify(event)."""
+        self.notify(event)
+
+    def update(self, event: Dict[str, Any]) -> None:
+        """Alias for notify(event)."""
         self.notify(event)
 
     def notify(self, event: Dict[str, Any]) -> None:
         """Deliver event to observer with complete failure isolation."""
-        self.update(event)
-
-    def update(self, event: Dict[str, Any]) -> None:
-        """Extract metrics from event and update plot state."""
         if not self.enabled:
             return
 

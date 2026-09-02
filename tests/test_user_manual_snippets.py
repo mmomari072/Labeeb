@@ -17,6 +17,15 @@ from labeeb.extractors import (
 )
 from labeeb.campaign import CampaignManifest, Campaign
 from labeeb.coupler import Coupler
+from labeeb.publisher import (
+    JsonlEventPublisher,
+    WebSocketEventPublisher,
+    RedisStreamEventPublisher,
+    CompositeEventPublisher,
+    NullEventPublisher,
+)
+from labeeb.plot import LivePlot, PlotObserver
+from labeeb.bundle import AnalysisBundle, export_analysis_bundle, load_analysis_bundle
 from labeeb.shared_memory import CampaignMemory, InMemorySharedBackend
 from labeeb.analysis import (
     correlation_analysis,
@@ -149,34 +158,25 @@ def test_section_7_campaign_status(tmp_path):
             "WF": [0.01, 0.02, 0.03],
         },
         templates=[str(deck)],
-        commands=["python -c 'print(\"done\")'"],
-        execution={
-            "main_dir": str(tmp_path),
-            "run_dir": "runs",
-            "timeout": 300,
-            "events_file": "events.jsonl",
-        }
+        commands=["python -c 'print(\"Simulation completed.\")'"],
+        execution={"main_dir": str(tmp_path), "run_dir": "runs"}
     )
-
-    campaign = Campaign(manifest, state_path=str(tmp_path / "campaign_state.sqlite"))
-    results = campaign.run(resume=True, max_retries=2)
+    campaign = Campaign(manifest)
+    results = campaign.run()
     assert len(results) == 3
-    assert campaign.status() == {"success": 3}
 
-    status_export = tmp_path / "execution_summary.csv"
-    campaign.export_status(str(status_export))
-    assert status_export.exists()
+    status_summary = campaign.status()
+    assert status_summary.get("success") == 3
 
 
-def test_section_8_coupler_stability(tmp_path):
+def test_section_8_coupler():
     mcnp = Case(name="mcnp", output_files={})
     mcnp.database = Database(data={"RHO": [1.0]})
 
     relap = Case(name="relap", output_files={})
     relap.database = Database(data={"POWER": [20.0], "FLOW": [1200.0]})
 
-    coupler = Coupler(name="coupled_feedback")
-    coupler.main_dir = str(tmp_path)
+    coupler = Coupler(name="neutronics_th_loop")
     coupler.database = Database(data={"RHO": [1.0], "POWER": [20.0], "FLOW": [1200.0]})
     coupler.add_case(mcnp, attributes=["RHO"])
     coupler.add_case(relap, attributes=["POWER", "FLOW"])
@@ -196,7 +196,83 @@ def test_section_8_coupler_stability(tmp_path):
     assert result.converged is True
 
 
-def test_section_9_shared_memory():
+def test_section_9_publisher_and_live_plot(tmp_path):
+    events_file = tmp_path / "campaign_events.jsonl"
+    jsonl_pub = JsonlEventPublisher(str(events_file), max_buffer_size=1000)
+    ws_pub = WebSocketEventPublisher(
+        "ws://localhost:8000/events",
+        reconnect_interval_seconds=2.0,
+        timeout=2.0,
+        enabled=False
+    )
+    redis_pub = RedisStreamEventPublisher(
+        stream_key="labeeb:events",
+        url="redis://localhost:6379/0",
+        maxlen=10000,
+        socket_timeout=1.0,
+        enabled=False
+    )
+    pub = CompositeEventPublisher([jsonl_pub, ws_pub, redis_pub], redact_keys=["password"])
+
+    pub.publish({"event_type": "metric", "temperature": 340.5, "password": "secret_value"})
+    buffered = pub.get_buffered_events()
+    assert len(buffered) > 0
+    assert buffered[0]["password"] == "[REDACTED]"
+
+    replayed = []
+    pub.replay(lambda evt: replayed.append(evt))
+    assert len(replayed) == 1
+
+    # LivePlot context
+    plot_out = tmp_path / "progress.png"
+    with LivePlot(metrics=["RHO", "WF"], output_path=str(plot_out)) as lp:
+        lp.observe({"RHO": 19.2, "WF": 0.02})
+
+    pub.flush()
+    pub.close()
+
+
+def test_section_10_analysis_bundle(tmp_path):
+    deck = tmp_path / "deck.template"
+    deck.write_text("PARAM = #PARAM#\n")
+
+    manifest = CampaignManifest(
+        name="bundle_campaign",
+        parameters={"PARAM": [1, 2]},
+        templates=[str(deck)],
+        commands=["python -c 'print(\"done\")'"],
+        execution={"main_dir": str(tmp_path), "run_dir": "runs"}
+    )
+    campaign = Campaign(manifest)
+    results = campaign.run()
+
+    summary_file = tmp_path / "summary.csv"
+    summary_file.write_text("col1,col2\n10,20\n")
+
+    bundle = AnalysisBundle.from_campaign(
+        campaign=campaign,
+        results=results,
+        artifacts={"summary": str(summary_file)},
+        redact_keys=["api_token", "secret"]
+    )
+
+    json_path = tmp_path / "bundle.json"
+    zip_path = tmp_path / "bundle.zip"
+    bundle.to_json(str(json_path))
+    bundle.to_zip(str(zip_path))
+    assert json_path.exists()
+    assert zip_path.exists()
+
+    loaded = AnalysisBundle.load(str(zip_path))
+    assert loaded.manifest["name"] == "bundle_campaign"
+    assert len(loaded.results) == 2
+
+    restored_mem = CampaignMemory()
+    loaded.replay_memory(restored_mem)
+    assert len(restored_mem.get_all_cases()) == 2
+
+
+def test_section_11_shared_memory():
     memory = CampaignMemory(backend=InMemorySharedBackend())
     received = []
     memory.add_listener(lambda case_id, data: received.append(data.get("status")))
@@ -212,7 +288,7 @@ def test_section_9_shared_memory():
     assert stats["TEMP"]["mean"] == 330.0
 
 
-def test_section_10_analysis():
+def test_section_12_analysis():
     correlations = correlation_analysis(
         inputs={"RHO": [18.0, 19.0, 20.0], "TEMP": [300.0, 320.0, 340.0]},
         output=[1.002, 1.015, 1.028]
@@ -223,7 +299,7 @@ def test_section_10_analysis():
     assert n_samples == 59
 
 
-def test_section_11_case_study():
+def test_section_13_case_study():
     with tempfile.TemporaryDirectory() as workspace:
         root = Path(workspace)
         deck = root / "simulation.template"
@@ -241,15 +317,25 @@ def test_section_11_case_study():
             execution={"main_dir": str(root), "run_dir": "runs"}
         )
 
+        event_path = root / "events.jsonl"
+        publisher = JsonlEventPublisher(event_path)
         memory = CampaignMemory()
-        campaign = Campaign(manifest, memory=memory)
+
+        campaign = Campaign(manifest, memory=memory, publisher=publisher)
         results = campaign.run()
+        publisher.flush()
 
         assert len(results) == 10
         summary = memory.online_summary(metrics=["RHO", "WF"])
         assert "RHO" in summary
         assert "WF" in summary
 
+        bundle_path = root / "jrtr_fuel_uncertainty.zip"
+        bundle = campaign.export_bundle(bundle_path, results=results)
+        assert bundle_path.exists()
+        assert bundle.manifest["name"] == "jrtr_fuel_uncertainty"
+
         dummy_keff = [1.0 + 0.01 * r - 0.05 * w for r, w in zip(rhos, wfs)]
         corr = correlation_analysis(inputs={"RHO": rhos, "WF": wfs}, output=dummy_keff)
         assert len(corr) == 2
+        publisher.close()

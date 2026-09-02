@@ -310,7 +310,122 @@ result = coupler.run_to_convergence(
 
 ---
 
-## 9. Non-Blocking Shared Campaign Memory (`labeeb.shared_memory`)
+## 9. Streaming Events, Transports, & Live Observers (`labeeb.publisher`, `labeeb.plot`)
+
+Labeeb provides an API-first, strictly non-blocking event publishing and monitoring subsystem designed to stream lifecycle events and metric telemetry during execution without risking simulation crashes or performance degradation.
+
+### Built-in Event Publishers
+
+```python
+from labeeb.publisher import (
+    JsonlEventPublisher,
+    WebSocketEventPublisher,
+    RedisStreamEventPublisher,
+    CompositeEventPublisher,
+    NullEventPublisher,
+)
+
+# 1. Append-only JSONL streaming
+jsonl_pub = JsonlEventPublisher("campaign_events.jsonl", max_buffer_size=1000)
+
+# 2. Asynchronous WebSocket transport with reconnect backoff and non-blocking queue
+ws_pub = WebSocketEventPublisher(
+    "ws://localhost:8000/events",
+    reconnect_interval_seconds=2.0,
+    timeout=2.0,
+)
+
+# 3. Asynchronous Redis Streams XADD transport with configurable socket timeouts
+redis_pub = RedisStreamEventPublisher(
+    stream_key="labeeb:events",
+    url="redis://localhost:6379/0",
+    maxlen=10000,
+    socket_timeout=1.0,
+)
+
+# 4. Composite multiplexer with failure isolation
+pub = CompositeEventPublisher([jsonl_pub, ws_pub, redis_pub])
+```
+
+### Ring Buffering, Replay, & Redaction
+
+All publishers inherit from `EventPublisher` and include in-memory ring buffering and sensitive data redaction:
+
+```python
+# Publish arbitrary structured event
+pub.publish({"event_type": "metric", "temperature": 340.5, "password": "secret_value"})
+
+# In-memory buffer inspection
+buffered = pub.get_buffered_events()
+assert len(buffered) > 0
+
+# Replay buffered events to custom listener
+replayed = []
+pub.replay(lambda evt: replayed.append(evt))
+
+# Clean lifecycle shutdown
+pub.flush()
+pub.close()
+```
+
+### Live Visualization with `LivePlot` & `PlotObserver`
+
+Visualize simulation metrics in real-time with bounded update cadences and headless support:
+
+```python
+from labeeb.plot import LivePlot, PlotObserver
+
+# 1. Attach PlotObserver directly to publisher
+observer = PlotObserver(
+    output_path="runs/live_plot.png",
+    metrics=["RHO", "duration"],
+    update_interval_seconds=0.5,
+    enabled=True
+)
+pub.add_observer(observer)
+
+# 2. Context manager for automated flushes and plot rendering
+with LivePlot(metrics=["RHO", "WF"], output_path="runs/progress.png") as lp:
+    lp.observe({"RHO": 19.2, "WF": 0.02})
+```
+
+---
+
+## 10. Reproducible Analysis Bundles (`labeeb.bundle`)
+
+Package simulation campaign runs into self-contained, reproducible, and shareable JSON or ZIP archives containing manifests, cryptographic provenance hashes, results, execution event timelines, and opt-in artifact files:
+
+```python
+from labeeb.bundle import AnalysisBundle, export_analysis_bundle, load_analysis_bundle
+
+# Export bundle from executed Campaign
+bundle = AnalysisBundle.from_campaign(
+    campaign=campaign,
+    results=results,
+    artifacts={"summary": "runs/summary.csv"},
+    redact_keys=["api_token", "secret"]
+)
+
+# 1. Export to formatted JSON
+bundle.to_json("bundle.json")
+
+# 2. Export to compressed ZIP archive with artifact files included
+bundle.to_zip("bundle.zip")
+
+# 3. Load, validate schema & provenance integrity
+loaded = AnalysisBundle.load("bundle.zip")
+print(f"Loaded campaign '{loaded.manifest['name']}' with {len(loaded.results)} results.")
+
+# 4. Replay state directly into fresh CampaignMemory or event listener
+from labeeb.shared_memory import CampaignMemory
+
+restored_mem = CampaignMemory()
+loaded.replay_memory(restored_mem)
+```
+
+---
+
+## 11. Non-Blocking Shared Campaign Memory (`labeeb.shared_memory`)
 
 Stream results and parameter outputs to thread-safe shared memory for online monitoring and statistics without blocking execution:
 
@@ -336,7 +451,7 @@ print(f"Running mean temperature: {stats['TEMP']['mean']:.1f} K")
 
 ---
 
-## 10. Sensitivity & Uncertainty Analysis (`labeeb.analysis`)
+## 12. Sensitivity & Uncertainty Analysis (`labeeb.analysis`)
 
 Perform fast post-processing and sensitivity screening:
 
@@ -361,9 +476,9 @@ print(f"Minimum runs for 95/95 one-sided limit: {n_samples}")
 
 ---
 
-## 11. Complete Runnable Case Study Example
+## 13. Complete Runnable Case Study Example
 
-Here is an end-to-end, fully runnable Python script illustrating a complete uncertainty study using Labeeb:
+Here is an end-to-end, fully runnable Python script illustrating a complete uncertainty study using Labeeb with event streaming, live plotting, shared memory, and analysis bundle export:
 
 ```python
 import tempfile
@@ -372,6 +487,9 @@ from labeeb import (
     Campaign,
     CampaignManifest,
     CampaignMemory,
+    JsonlEventPublisher,
+    LivePlot,
+    AnalysisBundle,
     latin_hypercube_sample,
     correlation_analysis,
 )
@@ -398,16 +516,25 @@ def run_case_study():
             execution={"main_dir": str(root), "run_dir": "runs"}
         )
 
-        # 4. Attach shared memory and run
+        # 4. Attach event publisher and shared memory
+        event_path = root / "events.jsonl"
+        publisher = JsonlEventPublisher(event_path)
         memory = CampaignMemory()
-        campaign = Campaign(manifest, memory=memory)
+
+        campaign = Campaign(manifest, memory=memory, publisher=publisher)
         results = campaign.run()
+        publisher.flush()
 
         print(f"Campaign execution complete: {len(results)} cases resolved.")
         summary = memory.online_summary(metrics=["RHO", "WF"])
         print("Online summary:", summary)
 
-        # 5. Sensitivity correlation against simulated dummy output
+        # 5. Export reproducible analysis bundle
+        bundle_path = root / "jrtr_fuel_uncertainty.zip"
+        bundle = campaign.export_bundle(bundle_path, results=results)
+        print(f"Analysis bundle saved: {bundle_path.name}")
+
+        # 6. Sensitivity correlation against simulated dummy output
         dummy_keff = [1.0 + 0.01 * r - 0.05 * w for r, w in zip(rhos, wfs)]
         corr = correlation_analysis(inputs={"RHO": rhos, "WF": wfs}, output=dummy_keff)
         print("Sensitivity Correlations:\n", corr)
@@ -418,7 +545,7 @@ if __name__ == "__main__":
 
 ---
 
-## 12. Exception Hierarchy
+## 14. Exception Hierarchy
 
 All domain exceptions inherit from `LabeebError`:
 
@@ -431,3 +558,5 @@ All domain exceptions inherit from `LabeebError`:
 | **`DatabaseError`** | `labeeb.exceptions` | Mismatched attribute lengths or invalid column indexing |
 | **`SamplingError`** | `labeeb.exceptions` | Invalid distribution bounds or probability weights |
 | **`SharedMemoryError`**| `labeeb.shared_memory`| Invalid case ID or uncopyable shared state |
+| **`PublisherError`** | `labeeb.publisher` | Unrecoverable event publisher failure |
+| **`BundleError`** | `labeeb.bundle` | Corrupt analysis bundle archive or missing bundle schema |
