@@ -1,3 +1,4 @@
+import math
 import os
 import tempfile
 import pytest
@@ -221,6 +222,41 @@ def test_database_derived_attribute_vectorized():
 
     db["a"] = [10, 20, 30]
     assert list(db["sum_ab"]) == [14, 25, 36]
+
+
+def test_database_derived_attribute_vectorized_string_expressions():
+    db = Database(data={"theta": [0.0, math.pi / 2.0, math.pi], "radius": [10.0, 20.0, 30.0]})
+
+    # Vectorized string expression using transcendental functions
+    db.add_derived_attribute(
+        "x_coord",
+        "radius * cos(theta)",
+        vectorized=True,
+        unit="cm",
+    )
+    db.add_derived_attribute(
+        "y_coord",
+        "radius * sin(theta)",
+        vectorized=True,
+        unit="cm",
+    )
+
+    assert list(db["x_coord"]) == pytest.approx([10.0, 0.0, -30.0], abs=1e-6)
+    assert list(db["y_coord"]) == pytest.approx([0.0, 20.0, 0.0], abs=1e-6)
+
+    # Recomputing when theta changes
+    db["theta"] = [math.pi / 2.0, math.pi, 0.0]
+    assert list(db["x_coord"]) == pytest.approx([0.0, -20.0, 30.0], abs=1e-6)
+    assert list(db["y_coord"]) == pytest.approx([10.0, 0.0, 0.0], abs=1e-6)
+
+
+def test_database_derived_attribute_vectorized_advanced_math():
+    db = Database(data={"val": [1.0, 4.0, 9.0], "decay": [0.1, 0.2, 0.3]})
+    db.add_derived_attribute("root_val", "sqrt(val)", vectorized=True)
+    db.add_derived_attribute("exp_decay", "exp(-decay)", vectorized=True)
+
+    assert list(db["root_val"]) == pytest.approx([1.0, 2.0, 3.0])
+    assert list(db["exp_decay"]) == pytest.approx([math.exp(-0.1), math.exp(-0.2), math.exp(-0.3)])
 
 
 def test_database_rejects_missing_and_circular_derived_dependencies():

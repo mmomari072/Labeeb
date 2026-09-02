@@ -16,40 +16,111 @@ from ..exceptions import CaseExecutionError, TemplateError
 logger = logging.getLogger(__name__)
 
 
+try:
+    import numpy as np
+    _HAS_NUMPY = True
+except ImportError:
+    np = None  # type: ignore[assignment]
+    _HAS_NUMPY = False
+
+try:
+    import pandas as pd
+    _HAS_PANDAS = True
+except ImportError:
+    pd = None  # type: ignore[assignment]
+    _HAS_PANDAS = False
+
+
+def _make_vector_compatible(math_fn: Optional[Callable[..., Any]], np_fn: Optional[Callable[..., Any]] = None) -> Optional[Callable[..., Any]]:
+    """Wrap scalar and numpy math functions for transparent scalar and vector execution."""
+    if math_fn is None and np_fn is None:
+        return None
+    if np_fn is None:
+        return math_fn
+    if math_fn is None:
+        return np_fn
+
+    def wrapped(*args: Any, **kwargs: Any) -> Any:
+        if args and any(
+            isinstance(a, (list, tuple))
+            or (_HAS_NUMPY and isinstance(a, np.ndarray))
+            or (_HAS_PANDAS and isinstance(a, (pd.Series, pd.DataFrame)))
+            for a in args
+        ):
+            return np_fn(*args, **kwargs)
+        try:
+            return math_fn(*args, **kwargs)
+        except (TypeError, ValueError):
+            return np_fn(*args, **kwargs)
+
+    wrapped.__name__ = getattr(math_fn, "__name__", getattr(np_fn, "__name__", "wrapped_math"))
+    return wrapped
+
+
+def _smart_min(*args: Any) -> Any:
+    """Universal min function supporting scalars and element-wise or reduction operations on vectors."""
+    if len(args) == 1:
+        arg = args[0]
+        if hasattr(arg, "min"):
+            return arg.min()
+        if isinstance(arg, (list, tuple)):
+            return min(arg)
+        return arg
+    if any((_HAS_NUMPY and isinstance(a, np.ndarray)) or (_HAS_PANDAS and isinstance(a, pd.Series)) for a in args):
+        if _HAS_NUMPY:
+            return np.minimum(*args)
+    return min(*args)
+
+
+def _smart_max(*args: Any) -> Any:
+    """Universal max function supporting scalars and element-wise or reduction operations on vectors."""
+    if len(args) == 1:
+        arg = args[0]
+        if hasattr(arg, "max"):
+            return arg.max()
+        if isinstance(arg, (list, tuple)):
+            return max(arg)
+        return arg
+    if any((_HAS_NUMPY and isinstance(a, np.ndarray)) or (_HAS_PANDAS and isinstance(a, pd.Series)) for a in args):
+        if _HAS_NUMPY:
+            return np.maximum(*args)
+    return max(*args)
+
+
 DEFAULT_MATH_FUNCTIONS: Dict[str, Any] = {
-    "sin": math.sin,
-    "cos": math.cos,
-    "tan": math.tan,
-    "asin": math.asin,
-    "acos": math.acos,
-    "atan": math.atan,
-    "atan2": math.atan2,
-    "sinh": math.sinh,
-    "cosh": math.cosh,
-    "tanh": math.tanh,
-    "asinh": getattr(math, "asinh", None),
-    "acosh": getattr(math, "acosh", None),
-    "atanh": getattr(math, "atanh", None),
-    "exp": math.exp,
-    "log": math.log,
-    "log10": math.log10,
-    "log2": math.log2,
-    "sqrt": math.sqrt,
-    "ceil": math.ceil,
-    "floor": math.floor,
-    "fabs": math.fabs,
-    "abs": abs,
-    "round": round,
-    "pow": math.pow,
-    "min": min,
-    "max": max,
+    "sin": _make_vector_compatible(math.sin, np.sin if _HAS_NUMPY else None),
+    "cos": _make_vector_compatible(math.cos, np.cos if _HAS_NUMPY else None),
+    "tan": _make_vector_compatible(math.tan, np.tan if _HAS_NUMPY else None),
+    "asin": _make_vector_compatible(math.asin, getattr(np, "arcsin", None) if _HAS_NUMPY else None),
+    "acos": _make_vector_compatible(math.acos, getattr(np, "arccos", None) if _HAS_NUMPY else None),
+    "atan": _make_vector_compatible(math.atan, getattr(np, "arctan", None) if _HAS_NUMPY else None),
+    "atan2": _make_vector_compatible(math.atan2, getattr(np, "arctan2", None) if _HAS_NUMPY else None),
+    "sinh": _make_vector_compatible(math.sinh, getattr(np, "sinh", None) if _HAS_NUMPY else None),
+    "cosh": _make_vector_compatible(math.cosh, getattr(np, "cosh", None) if _HAS_NUMPY else None),
+    "tanh": _make_vector_compatible(math.tanh, getattr(np, "tanh", None) if _HAS_NUMPY else None),
+    "asinh": _make_vector_compatible(getattr(math, "asinh", None), getattr(np, "arcsinh", None) if _HAS_NUMPY else None),
+    "acosh": _make_vector_compatible(getattr(math, "acosh", None), getattr(np, "arccosh", None) if _HAS_NUMPY else None),
+    "atanh": _make_vector_compatible(getattr(math, "atanh", None), getattr(np, "arctanh", None) if _HAS_NUMPY else None),
+    "exp": _make_vector_compatible(math.exp, getattr(np, "exp", None) if _HAS_NUMPY else None),
+    "log": _make_vector_compatible(math.log, getattr(np, "log", None) if _HAS_NUMPY else None),
+    "log10": _make_vector_compatible(math.log10, getattr(np, "log10", None) if _HAS_NUMPY else None),
+    "log2": _make_vector_compatible(math.log2, getattr(np, "log2", None) if _HAS_NUMPY else None),
+    "sqrt": _make_vector_compatible(math.sqrt, getattr(np, "sqrt", None) if _HAS_NUMPY else None),
+    "ceil": _make_vector_compatible(math.ceil, getattr(np, "ceil", None) if _HAS_NUMPY else None),
+    "floor": _make_vector_compatible(math.floor, getattr(np, "floor", None) if _HAS_NUMPY else None),
+    "fabs": _make_vector_compatible(math.fabs, getattr(np, "fabs", None) if _HAS_NUMPY else None),
+    "abs": _make_vector_compatible(abs, getattr(np, "abs", None) if _HAS_NUMPY else None),
+    "round": _make_vector_compatible(round, getattr(np, "round", None) if _HAS_NUMPY else None),
+    "pow": _make_vector_compatible(math.pow, getattr(np, "power", None) if _HAS_NUMPY else None),
+    "min": _smart_min,
+    "max": _smart_max,
     "pi": math.pi,
     "e": math.e,
     "tau": getattr(math, "tau", 2 * math.pi),
-    "radians": math.radians,
-    "degrees": math.degrees,
-    "deg2rad": math.radians,
-    "rad2deg": math.degrees,
+    "radians": _make_vector_compatible(math.radians, getattr(np, "radians", None) if _HAS_NUMPY else None),
+    "degrees": _make_vector_compatible(math.degrees, getattr(np, "degrees", None) if _HAS_NUMPY else None),
+    "deg2rad": _make_vector_compatible(math.radians, getattr(np, "deg2rad", None) if _HAS_NUMPY else None),
+    "rad2deg": _make_vector_compatible(math.degrees, getattr(np, "rad2deg", None) if _HAS_NUMPY else None),
     "int": int,
     "float": float,
     "str": str,
@@ -174,7 +245,10 @@ def evaluate_expression(
             safe_env[k] = v
 
     try:
-        return eval(code, {"__builtins__": {}}, safe_env)
+        res = eval(code, {"__builtins__": {}}, safe_env)
+        if _HAS_NUMPY and isinstance(res, np.generic):
+            res = res.item()
+        return res
     except ZeroDivisionError as exc:
         raise TemplateError(f"Division by zero in expression '{expr_str}'") from exc
     except NameError as exc:

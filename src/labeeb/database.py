@@ -671,7 +671,7 @@ class Database(dict):
                 if spec["expression"] is not None:
                     context = {dep: pd.Series(self[dep]) for dep in spec["dependencies"]}
                     res = evaluate_expression(spec["expression"], context)
-                    if isinstance(res, (pd.Series, Attribute)):
+                    if hasattr(res, "tolist"):
                         values = res.tolist()
                     elif isinstance(res, (list, tuple)):
                         values = list(res)
@@ -679,7 +679,7 @@ class Database(dict):
                         values = [res] * row_count
                 else:
                     res = spec["function"](self)
-                    if isinstance(res, (pd.Series, Attribute)):
+                    if hasattr(res, "tolist"):
                         values = res.tolist()
                     elif isinstance(res, (list, tuple)):
                         values = list(res)
