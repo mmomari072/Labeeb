@@ -300,3 +300,156 @@ def test_database_deletion_protection_and_remove_derived():
     # Now y can be deleted cleanly
     del db["y"]
     assert "y" not in db
+
+
+def test_database_context_derived_attribute_scalar_and_lagged():
+    db = Database(data={"power": [10.0, 20.0, 30.0], "time": [1.0, 2.0, 3.0]})
+
+    # 1. Cumulative sum using (database, index)
+    db.add_derived_attribute(
+        "cum_energy",
+        lambda database, index: sum(database["power"][: index + 1]),
+        context="database",
+        unit="MWs",
+    )
+    assert list(db["cum_energy"]) == [10.0, 30.0, 60.0]
+
+    # 2. Lagged value using (database, index=None)
+    def prev_power(database, index=None):
+        if index is None or index == 0:
+            return 0.0
+        return database["power"][index - 1]
+
+    db.add_derived_attribute(
+        "power_lag1",
+        prev_power,
+        context="database",
+    )
+    assert list(db["power_lag1"]) == [0.0, 10.0, 20.0]
+
+    # 3. Access global statistics in row evaluation
+    db.add_derived_attribute(
+        "delta_from_mean",
+        lambda db, idx: db["power"][idx] - (sum(db["power"]) / len(db["power"])),
+        context="database",
+    )
+    assert list(db["delta_from_mean"]) == [-10.0, 0.0, 10.0]
+
+
+def test_database_context_derived_attribute_vectorized():
+    db = Database(data={"val": [10, 20, 30]})
+
+    # Vectorized callback receiving database object
+    db.add_derived_attribute(
+        "doubled",
+        lambda database: [x * 2 for x in database["val"]],
+        context="database",
+        vectorized=True,
+    )
+    assert list(db["doubled"]) == [20, 40, 60]
+
+    # Scalar broadcasting in vectorized callback
+    db.add_derived_attribute(
+        "global_mean",
+        lambda database: sum(database["val"]) / len(database["val"]),
+        context="database",
+        vectorized=True,
+    )
+    assert list(db["global_mean"]) == [20.0, 20.0, 20.0]
+
+
+def test_database_context_dynamic_dependencies_conservative_refresh():
+    db = Database(data={"a": [1, 2, 3], "b": [10, 20, 30]})
+
+    # Derived attribute with omitted dependencies -> dynamic dependencies
+    db.add_derived_attribute(
+        "cross_sum",
+        lambda db, idx: db["a"][idx] + db["b"][idx],
+        context="database",
+    )
+    assert list(db["cross_sum"]) == [11, 22, 33]
+
+    # Check metadata reflects dynamic_dependencies
+    meta = db.derived_attributes()["cross_sum"]
+    assert meta["context"] == "database"
+    assert meta["dynamic_dependencies"] is True
+    assert meta["dependencies"] is None
+
+    # Modifying column a triggers conservative refresh
+    db["a"] = [10, 20, 30]
+    assert list(db["cross_sum"]) == [20, 40, 60]
+
+    # Modifying via set_row triggers refresh
+    db.set_row(0, {"b": 50})
+    assert list(db["cross_sum"]) == [60, 40, 60]
+
+
+def test_database_context_explicit_dependencies_validation_and_cycles():
+    db = Database(data={"x": [1, 2, 3]})
+
+    # Explicit dependencies with context='database'
+    db.add_derived_attribute(
+        "y",
+        lambda db, idx: db["x"][idx] + 5,
+        dependencies=["x"],
+        context="database",
+    )
+    assert list(db["y"]) == [6, 7, 8]
+
+    meta = db.derived_attributes()["y"]
+    assert meta["context"] == "database"
+    assert meta["dynamic_dependencies"] is False
+    assert meta["dependencies"] == ["x"]
+
+    # Missing explicit dependency error
+    with pytest.raises(DatabaseError, match="missing dependencies"):
+        db.add_derived_attribute(
+            "bad_dep",
+            lambda db, idx: 0,
+            dependencies=["nonexistent"],
+            context="database",
+        )
+
+    # Self dependency error
+    with pytest.raises(DatabaseError, match="cannot depend on itself"):
+        db.add_derived_attribute(
+            "x",
+            lambda db, idx: 0,
+            dependencies=["x"],
+            context="database",
+        )
+
+    # Circular dependency error
+    with pytest.raises(DatabaseError, match="Circular derived attribute dependency"):
+        db.add_derived_attribute(
+            "x",
+            lambda db, idx: db["y"][idx],
+            dependencies=["y"],
+            context="database",
+        )
+
+    # Deletion protection when explicit dependency exists
+    with pytest.raises(DatabaseError, match="Cannot delete column 'x'"):
+        del db["x"]
+
+
+def test_database_context_rejections_and_invalid_signatures():
+    db = Database(data={"x": [1, 2, 3]})
+
+    # Invalid context name
+    with pytest.raises(DatabaseError, match="Derived attribute context must be 'row' or 'database'"):
+        db.add_derived_attribute("y", lambda row: row["x"], context="invalid_context")
+
+    # Invalid callback signature error wrapped in DatabaseError
+    def incompatible_signature(a, b, c, d, e):
+        return a + b
+
+    with pytest.raises(DatabaseError, match="Evaluation of derived attribute 'broken' failed"):
+        db.add_derived_attribute("broken", incompatible_signature, context="database")
+
+    # Vectorized callback returning mismatched length
+    def bad_vector_length(database):
+        return [1, 2]  # length 2 instead of 3
+
+    with pytest.raises(DatabaseError, match="expected 3"):
+        db.add_derived_attribute("bad_len", bad_vector_length, context="database", vectorized=True)

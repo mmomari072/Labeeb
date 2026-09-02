@@ -61,9 +61,26 @@ def test_section_3_database_and_attributes(tmp_path):
     assert list(db["POWER_KW"]) == [10000.0, 15000.0, 20000.0]
     assert list(db["SPECIFIC_FLOW"]) == [120.0, 90.0, 75.0]
 
+    db.add_derived_attribute(
+        "CUMULATIVE_ENERGY",
+        lambda database, index: sum(database["POWER"][: index + 1]),
+        context="database",
+        unit="MWh",
+    )
+    db.add_derived_attribute(
+        "GLOBAL_MEAN_POWER",
+        lambda database: sum(database["POWER"]) / len(database["POWER"]),
+        context="database",
+        vectorized=True,
+        unit="MW",
+    )
+    assert list(db["CUMULATIVE_ENERGY"]) == [10.0, 25.0, 45.0]
+
     db.update_row(row_id=1, data={"POWER": 16.5})
     assert db["POWER_KW"][1] == 16500.0
     assert db["SPECIFIC_FLOW"][1] == pytest.approx(1350.0 / 16.5)
+    assert list(db["CUMULATIVE_ENERGY"]) == [10.0, 26.5, 46.5]
+    assert db["GLOBAL_MEAN_POWER"][0] == pytest.approx((10.0 + 16.5 + 20.0) / 3.0)
 
     csv_path = tmp_path / "core_sampling.csv"
     db.export_to_file(str(csv_path))

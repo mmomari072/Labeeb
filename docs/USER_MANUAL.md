@@ -79,6 +79,21 @@ row_0 = db.get_row(0)  # {"POWER": 10.0, "FLOW": 1200.0}
 db.add_derived_attribute("POWER_KW", "POWER * 1000.0", unit="kW")
 db.add_derived_attribute("SPECIFIC_FLOW", lambda row: row["FLOW"] / row["POWER"], dependencies=["FLOW", "POWER"], unit="m3/(h*MW)")
 
+# Database-Context Callbacks: Function receives (database, index=None) for lagged, cumulative, or global calculations
+db.add_derived_attribute(
+    "CUMULATIVE_ENERGY",
+    lambda database, index: sum(database["POWER"][: index + 1]),
+    context="database",
+    unit="MWh",
+)
+db.add_derived_attribute(
+    "GLOBAL_MEAN_POWER",
+    lambda database: sum(database["POWER"]) / len(database["POWER"]),
+    context="database",
+    vectorized=True,
+    unit="MW",
+)
+
 # Update rows in-place (automatically triggers cascading topological recomputations)
 db.update_row(row_id=1, data={"POWER": 16.5})
 
