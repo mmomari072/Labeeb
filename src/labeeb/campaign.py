@@ -163,6 +163,24 @@ class Campaign:
         """Export the campaign's status registry to CSV, JSON, or Parquet."""
         return self.status_registry.export(path)
 
+    def export_bundle(
+        self,
+        path: Union[str, Path],
+        results: Optional[Sequence[Any]] = None,
+        artifacts: Optional[Dict[str, Union[str, Path]]] = None,
+        redact_keys: Optional[Sequence[str]] = None,
+    ) -> Any:
+        """Export an AnalysisBundle from this campaign to JSON or ZIP."""
+        from .bundle import export_analysis_bundle
+
+        return export_analysis_bundle(
+            self,
+            path=path,
+            results=results,
+            artifacts=artifacts,
+            redact_keys=redact_keys,
+        )
+
     def build_case(self) -> "Case":
         """Build a configured :class:`Case` for this campaign."""
         from .case import Case
