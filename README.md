@@ -163,7 +163,10 @@ with CampaignStateStore("campaign_state.sqlite") as state:
 ledger alongside the state store: each (case, attempt) execution links harvested
 metrics, artifact paths, stdout/stderr files, byte counts, redacted command, and
 status — nothing is overwritten, so retries and failures stay queryable and
-exportable to CSV/JSON/Parquet.
+exportable to CSV/JSON/Parquet. `Campaign.run()` writes this ledger automatically
+when configured — `Campaign(manifest, output_catalog="catalog.sqlite")` or
+`execution.output_catalog` in the manifest — recording each executed attempt
+(successes, failures, and retries) while staying fully disabled by default.
 
 ### Backup & Restore (`labeeb.backup`)
 Back up campaign state and run artifacts as one validated, atomic snapshot:

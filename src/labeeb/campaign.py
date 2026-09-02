@@ -2,18 +2,21 @@
 
 import hashlib
 import json
+import logging
 import shutil
 import time
 from datetime import datetime, timezone
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, TYPE_CHECKING, Union
+from typing import Any, Dict, List, Optional, Sequence, TYPE_CHECKING, Union
 
 from .exceptions import LabeebError
 
 if TYPE_CHECKING:
     from .case import Case
     from .results import CaseResult
+
+logger = logging.getLogger(__name__)
 
 
 class CampaignError(LabeebError):
@@ -133,6 +136,7 @@ class Campaign:
         status_registry: Optional[Any] = None,
         memory: Optional[Any] = None,
         publisher: Optional[Any] = None,
+        output_catalog: Optional[Union[str, Path]] = None,
     ) -> None:
         if not isinstance(manifest, CampaignManifest):
             raise CampaignError("Campaign requires a validated CampaignManifest")
@@ -141,6 +145,9 @@ class Campaign:
             raise CampaignError("Campaign parameters must contain the same number of values")
         self.manifest = manifest
         self.state_path = Path(state_path) if state_path is not None else None
+        self.output_catalog: Optional[Path] = (
+            Path(output_catalog) if output_catalog is not None else None
+        )
         from .results import StatusRegistry
         from .shared_memory import CampaignMemory
 
@@ -155,9 +162,16 @@ class Campaign:
         state_path: Optional[Union[str, Path]] = None,
         memory: Optional[Any] = None,
         publisher: Optional[Any] = None,
+        output_catalog: Optional[Union[str, Path]] = None,
     ) -> "Campaign":
         """Load a manifest and return an executable campaign object."""
-        return cls(load_manifest(path), state_path=state_path, memory=memory, publisher=publisher)
+        return cls(
+            load_manifest(path),
+            state_path=state_path,
+            memory=memory,
+            publisher=publisher,
+            output_catalog=output_catalog,
+        )
 
     def export_status(self, path: Union[str, Path]) -> Any:
         """Export the campaign's status registry to CSV, JSON, or Parquet."""
@@ -255,6 +269,68 @@ class Campaign:
 
         return CampaignStateStore(self.state_path)  # type: ignore[arg-type]
 
+    def _open_output_catalog(self) -> Optional[Any]:
+        """Open the optional OutputCatalog for this run (constructor path or
+        manifest ``execution.output_catalog``), or None when disabled."""
+        configured = self.output_catalog or self.manifest.execution.get("output_catalog")
+        if not configured:
+            return None
+        from .outputs import OutputCatalog
+
+        return OutputCatalog(Path(configured))
+
+    @staticmethod
+    def _record_catalog_attempt(
+        catalog: Any,
+        case: "Case",
+        result: "CaseResult",
+        case_id: int,
+        attempt: int,
+        output_lens: Dict[str, int],
+    ) -> None:
+        """Record one executed attempt into the output catalog.
+
+        Links case/attempt to status, command, timing, stdout/stderr artifacts
+        (when ``capture_output`` wrote them), and the harvested outputs produced
+        by this attempt (identified as the per-output append delta since
+        ``output_lens`` was captured before launch).
+        """
+        from .outputs import OutputRecord
+
+        history = getattr(case, "execution_history", None) or []
+        entry = history[-1] if history else {}
+        event = entry.get("execution_event") or {}
+        case_dir = Path(getattr(case, "current_case_dir", None) or ".")
+        stdout_file = case_dir / "stdout.log"
+        stderr_file = case_dir / "stderr.log"
+
+        metrics: Dict[str, Any] = {}
+        outputs = getattr(case, "outputs", {})
+        for key, values in outputs.items():
+            new_values = list(values[output_lens.get(key, 0):])
+            if new_values:
+                metrics[key] = new_values[-1]
+
+        record = OutputRecord(
+            case_id=case_id,
+            status=result.status,
+            attempt=attempt,
+            unit=entry.get("unit") or getattr(case, "name", None),
+            command=event.get("command") or entry.get("command"),
+            exit_code=event.get("returncode") if event else result.exit_code,
+            duration_seconds=result.duration_seconds or event.get("duration_seconds"),
+            metrics=metrics,
+            artifacts={},
+            stdout_path=str(stdout_file) if stdout_file.is_file() else None,
+            stderr_path=str(stderr_file) if stderr_file.is_file() else None,
+            stdout_bytes=int(event.get("stdout_bytes", 0) or 0),
+            stderr_bytes=int(event.get("stderr_bytes", 0) or 0),
+            message=event.get("message") or result.failure,
+            started_at=event.get("started_at"),
+            ended_at=event.get("ended_at"),
+        )
+        catalog.record(record)
+
     def run(self, resume: bool = True, max_retries: int = 3) -> List["CaseResult"]:
         """Execute all cases and return ordered :class:`CaseResult` records."""
         from .exceptions import CaseExecutionError
@@ -269,6 +345,8 @@ class Campaign:
         state = state_context.__enter__() if state_context is not None else None
         results: List[CaseResult] = []
         campaign_status = "SUCCESS"
+        catalog_context = self._open_output_catalog()
+        catalog = catalog_context.__enter__() if catalog_context is not None else None
         self._append_lifecycle_event("campaign_start", run_root)
         try:
             for case_id in range(len(case.database)):
@@ -298,6 +376,7 @@ class Campaign:
                 started = time.monotonic()
                 case.case_id = case_id
                 attempt = persisted["attempts"] if persisted is not None else 0
+                output_lens = {key: len(values) for key, values in case.outputs.items()}
                 self._append_lifecycle_event("case_start", run_root, case_id=case_id, attempt=attempt, status="STARTED")
                 try:
                     case.launch_case(case_id, _attempt=attempt)
@@ -333,10 +412,20 @@ class Campaign:
                     case_id,
                     {**parameters, "status": result.status, "duration": result.duration_seconds, "exit_code": result.exit_code, "failure": result.failure},
                 )
+                if catalog is not None:
+                    try:
+                        self._record_catalog_attempt(catalog, case, result, case_id, attempt, output_lens)
+                    except Exception as exc:
+                        logger.warning("Failed to record output catalog attempt for case %s: %s", case_id, exc)
                 if state is not None:
                     state.save(result, input_hash)
                 results.append(result)
         finally:
+            if catalog_context is not None:
+                try:
+                    catalog_context.__exit__(None, None, None)
+                except Exception as exc:
+                    logger.warning("Failed to close output catalog cleanly: %s", exc)
             if state_context is not None:
                 state_context.__exit__(None, None, None)
         self._append_lifecycle_event("campaign_complete", run_root, status=campaign_status)

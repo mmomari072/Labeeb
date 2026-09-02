@@ -371,6 +371,32 @@ Each record stores `case_id`, `attempt`, `unit`, `status`, redacted `command`,
 failure `message`, and `started_at`/`ended_at` timing. Command and message
 strings are redacted before persistence.
 
+### Campaign Integration (opt-in)
+`Campaign.run()` records **every executed attempt** (successes, failures, and
+retries) into an `OutputCatalog` when one is configured — two equivalent ways:
+
+```python
+from labeeb import Campaign
+
+campaign = Campaign(manifest, state_path="state.sqlite", output_catalog="catalog.sqlite")
+campaign.run()
+```
+
+or, declaratively in the manifest:
+
+```python
+execution:
+  run_dir: runs
+  output_catalog: catalog.sqlite   # per-attempt ledger next to campaign state
+```
+
+Per attempt the catalog row links the case/attempt to its status, exit code,
+command, duration, harvested metrics, and stdout/stderr log paths (when
+`capture_output` is enabled). Retries accumulate as separate attempt rows
+(`attempt` 0, 1, ...), matching the retry numbering of `CampaignStateStore`.
+When no catalog is configured — the default — campaign behavior is completely
+unchanged and no file is created.
+
 ### Backup & Restore (`labeeb.backup`)
 Campaign state databases and run artifacts can be snapshotted as one validated,
 atomic backup directory:
