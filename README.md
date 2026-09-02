@@ -166,6 +166,15 @@ and completion events. Set `execution.capture_output` to retain per-case
 `stdout.log` and `stderr.log` artifacts. Use `json_format=True` for structured
 logs; common password, token, secret, and API-key values are redacted.
 
+Each `ExecutionEvent` also carries failure/timeout context (`message`,
+`timed_out`) plus command/cwd/timing/exit and stdout/stderr byte counts, and is
+mirrored into `case.execution_history`. Structured JSON log records embed the
+full event under a `payload` key with `case_id`/`unit`/`attempt` context.
+Redaction covers key/value secrets (`password=...`, `api_key=...`) and CLI-flag
+values (`--api-key sk-123`, `-password hunter2`) across log lines, JSON
+payloads, events, and history. Without `configure_logging()`, execution logging
+stays disabled and command behavior is unchanged.
+
 ```python
 from labeeb.case import Case
 from labeeb.execution import LocalExecutionBackend

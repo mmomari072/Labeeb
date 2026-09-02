@@ -15,7 +15,7 @@ from .database import Attribute, Database
 from .exceptions import CaseExecutionError, TemplateError
 from .execution import ExecutionBackend, LocalExecutionBackend
 from .extractors import run_extractor
-from .logging_config import CaseLoggerAdapter
+from .logging_config import CaseLoggerAdapter, redact_sensitive
 from .utils import file_io, os_ops, progress
 
 logger = logging.getLogger(__name__)
@@ -561,7 +561,7 @@ class Case(CoupledUnit):
 
                 self.execution_history.append({
                     "case_id": self.case_id,
-                    "command": cmd,
+                    "command": redact_sensitive(cmd),
                     "exit_code": code,
                     "status": status_str,
                     "timestamp": t_stamp,
@@ -572,9 +572,9 @@ class Case(CoupledUnit):
                     self.execution_history[-1]["execution_event"] = result.event.to_dict()
 
                 if code != 0:
-                    logger.error(f"Simulation command returned exit status {status_str} ({code}) for command '{cmd}'")
+                    logger.error(f"Simulation command returned exit status {status_str} ({code}) for command '{redact_sensitive(cmd)}'")
                     raise CaseExecutionError(
-                        f"Simulation command failed for case {self.case_id}: '{cmd}' ({status_str}, exit code {code})"
+                        f"Simulation command failed for case {self.case_id}: '{redact_sensitive(cmd)}' ({status_str}, exit code {code})"
                     )
                 exit_codes.append(code)
         except Exception as e:

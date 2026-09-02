@@ -10,12 +10,30 @@ from typing import Any, Dict, Optional, Union
 
 _HANDLER_MARKER = "_labeeb_handler"
 _FORMAT = "%(asctime)s %(levelname)s %(name)s %(message)s"
-_SECRET_PATTERN = re.compile(r"(?i)(password|token|secret|api[_-]?key)(\s*[=:]\s*)[^\s,;]+")
+_SECRET_PATTERN = re.compile(r"(?i)(password|passwd|token|secret|api[_-]?key)(\s*[=:]\s*)[^\s,;]+")
+# Redact values passed as CLI-style flags, e.g. --api-key sk-1234 or -password hunter2.
+# Dashed prefixes (--db-password) are supported; a following word character keeps
+# plain tokens like "-secretary" or "-tokenize" untouched.
+_FLAG_SECRET_PATTERN = re.compile(
+    r"(?i)(-{1,2}[a-z0-9_-]*?(?:password|passwd|secret|token|api[_-]?key))(?![a-z0-9_-])(\s+)[^\s,;]+"
+)
 
 
 def redact_sensitive(value: str) -> str:
-    """Redact common key/value secrets before they reach logs or events."""
-    return _SECRET_PATTERN.sub(r"\1\2[REDACTED]", value)
+    """Redact common key/value and CLI-flag secrets before they reach logs or events."""
+    value = _SECRET_PATTERN.sub(r"\1\2[REDACTED]", value)
+    return _FLAG_SECRET_PATTERN.sub(r"\1\2[REDACTED]", value)
+
+
+def redact_tree(value: Any) -> Any:
+    """Recursively redact string leaves inside nested structures (dicts, lists)."""
+    if isinstance(value, str):
+        return redact_sensitive(value)
+    if isinstance(value, dict):
+        return {key: redact_tree(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [redact_tree(item) for item in value]
+    return value
 
 
 class JsonFormatter(logging.Formatter):
@@ -31,6 +49,9 @@ class JsonFormatter(logging.Formatter):
         for key in ("case_id", "unit", "attempt", "event_type"):
             if hasattr(record, key):
                 payload[key] = getattr(record, key)
+        structured = getattr(record, "payload", None)
+        if structured is not None:
+            payload["payload"] = redact_tree(structured)
         return json.dumps(payload, sort_keys=True)
 
 

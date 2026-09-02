@@ -221,6 +221,40 @@ case.capture_output = True
 case.launch()
 ```
 
+### Structured Execution Logging & Redaction
+Every shell command executed through `Case.launch()` or `LocalExecutionBackend` produces an auditable `ExecutionEvent` record and, when JSON logging is enabled, a structured log line. Events are also recorded per case in `case.execution_history` and can be exported:
+
+```python
+from labeeb.execution import LocalExecutionBackend, export_execution_events
+
+backend = LocalExecutionBackend()
+result = backend.run("mcnp6 i=deck", cwd=".", timeout=300.0)
+
+event = result.event  # ExecutionEvent
+event.command          # redacted command string
+event.cwd              # working directory
+event.status           # "SUCCESS" | "FAILED" | "TIMEOUT"
+event.returncode       # exit code (-999 on timeout, -1 if launch failed)
+event.duration_seconds # wall-clock timing
+event.started_at / event.ended_at
+event.stdout_bytes / event.stderr_bytes  # sizes, not contents
+event.message          # failure/timeout context (reason + redacted stderr tail)
+event.timed_out        # True when the command hit the timeout budget
+export_execution_events([event], "execution_events.json")
+```
+
+Structured JSON logs (one record per execution) are emitted through the `labeeb` logger when configured with `json_format=True`; the full event is embedded under the record's `payload` key together with `case_id`/`unit`/`attempt` context:
+
+```python
+from labeeb.logging_config import configure_logging
+configure_logging(log_file="run/labeeb_structured.jsonl", json_format=True, stream=False)
+# -> {"timestamp": ..., "level": "INFO", "logger": "labeeb", "message": "execution SUCCESS: printf done",
+#     "payload": {"command": ..., "cwd": ..., "status": "SUCCESS", "returncode": 0,
+#                 "duration_seconds": ..., "stdout_bytes": 4, "stderr_bytes": 0, "timed_out": false, ...}}
+```
+
+Redaction is applied defensively at every sink: key/value secrets (`password=...`, `token=...`, `api_key=...`) and CLI-flag values (`--api-key sk-123`, `-password hunter2`) are replaced with `[REDACTED]` in log lines, JSON payloads, execution events, and `execution_history` entries. When Labeeb logging is left unconfigured (no handlers), execution proceeds unchanged and only default Python logging behavior applies — structured emission never alters command execution or its results.
+
 ### Declarative Output Harvesters (`labeeb.extractors`)
 Extract typed scalar and vector responses from simulation outputs:
 

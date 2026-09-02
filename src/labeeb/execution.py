@@ -33,6 +33,7 @@ class ExecutionEvent:
     attempt: int = 0
     event_type: str = "command"
     message: Optional[str] = None
+    timed_out: bool = False
 
     def to_dict(self) -> Dict[str, Any]:
         """Return a JSON-compatible event mapping."""
@@ -97,7 +98,8 @@ class LocalExecutionBackend(ExecutionBackend):
         started = time.monotonic()
         started_at = datetime.now(timezone.utc).isoformat()
         stream = None
-        self.command_logger.info("Starting command %r in %s", command, cwd)
+        log_command = redact_sensitive(command)
+        self.command_logger.info("Starting command %r in %s", log_command, cwd)
         try:
             if log_file is not None:
                 stream = open(log_file, "a", encoding="utf-8")
@@ -116,45 +118,90 @@ class LocalExecutionBackend(ExecutionBackend):
                 stderr=stderr,
                 duration_seconds=time.monotonic() - started,
             )
-            result.event = self._event(command, cwd, result, started_at)
+            status = "SUCCESS" if result.returncode == 0 else "FAILED"
+            result.event = self._event(
+                command, cwd, result, started_at,
+                status=status,
+                message=self._failure_context(command, result),
+            )
             self.command_logger.info(
                 "Command %r completed with exit code %s in %.3fs",
-                command,
+                log_command,
                 result.returncode,
                 result.duration_seconds,
             )
+            self._emit_structured(result.event)
             return result
         except subprocess.TimeoutExpired as exc:
             duration = time.monotonic() - started
-            self.command_logger.warning("Command %r timed out after %s seconds in %.3fs", command, timeout, duration)
+            self.command_logger.warning(
+                "Command %r timed out after %s seconds in %.3fs", log_command, timeout, duration
+            )
             if stream is not None:
                 stream.write(f"\n[ERROR] Command timed out after {timeout} seconds.\n")
-            return ExecutionResult(
+            event = self._event(
+                command,
+                cwd,
+                ExecutionResult(-999, str(exc.stdout or ""), str(exc.stderr or ""), duration, True),
+                started_at,
+                status="TIMEOUT",
+                message=f"Command timed out after {timeout} seconds",
+            )
+            result = ExecutionResult(
                 returncode=-999,
-                stdout=exc.stdout or "",
-                stderr=exc.stderr or "",
+                stdout=str(exc.stdout or ""),
+                stderr=str(exc.stderr or ""),
                 duration_seconds=duration,
                 timed_out=True,
-                event=self._event(
-                    command,
-                    cwd,
-                    ExecutionResult(-999, exc.stdout or "", exc.stderr or "", duration, True),
-                    started_at,
-                    status="TIMEOUT",
-                ),
+                event=event,
             )
+            self._emit_structured(event)
+            return result
         except OSError as exc:
-            self.command_logger.error("Command %r could not be executed: %s", command, exc)
+            self.command_logger.error("Command %r could not be executed: %s", log_command, exc)
             result = ExecutionResult(
                 returncode=-1,
                 stderr=str(exc),
                 duration_seconds=time.monotonic() - started,
             )
-            result.event = self._event(command, cwd, result, started_at, status="FAILED")
+            result.event = self._event(
+                command, cwd, result, started_at, status="FAILED", message=str(exc)
+            )
+            self._emit_structured(result.event)
             return result
         finally:
             if stream is not None:
                 stream.close()
+
+    @staticmethod
+    def _failure_context(command: str, result: "ExecutionResult") -> Optional[str]:
+        """Build a redacted human context message for failed commands."""
+        if result.returncode == 0:
+            return None
+        message = f"Command exited with code {result.returncode}"
+        if result.stderr:
+            tail = result.stderr.strip()[-1500:]
+            message += f"; stderr: {redact_sensitive(tail)}"
+        return message
+
+    def _emit_structured(self, event: "ExecutionEvent") -> None:
+        """Emit the full event as a structured JSON payload on the command logger."""
+        level = logging.INFO if event.status == "SUCCESS" else (
+            logging.WARNING if event.status == "TIMEOUT" else logging.ERROR
+        )
+        if not self.command_logger.isEnabledFor(level):
+            return
+        try:
+            self.command_logger.log(
+                level,
+                "execution %s: %s",
+                event.status,
+                event.command or event.message or "",
+                extra={"event_type": "execution", "payload": event.to_dict()},
+            )
+        except Exception:
+            # Structured emission must never break command execution.
+            logger.debug("Failed to emit structured execution record", exc_info=True)
 
     def _event(
         self,
@@ -163,6 +210,7 @@ class LocalExecutionBackend(ExecutionBackend):
         result: ExecutionResult,
         started_at: str,
         status: Optional[str] = None,
+        message: Optional[str] = None,
     ) -> ExecutionEvent:
         context = getattr(self.command_logger, "extra", {})
         return ExecutionEvent(
@@ -178,6 +226,8 @@ class LocalExecutionBackend(ExecutionBackend):
             case_id=context.get("case_id"),
             unit=context.get("unit"),
             attempt=context.get("attempt", 0),
+            message=message,
+            timed_out=bool(getattr(result, "timed_out", False)),
         )
 
 
