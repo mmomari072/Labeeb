@@ -91,6 +91,27 @@ def test_section_5_templating(tmp_path):
         "channels": [{"id": 1, "flow": 500.0}, {"id": 2, "flow": 600.0}]
     })
 
+    model_inp = tmp_path / "model.inp"
+    model_inp.write_text("flux = 1.0e-04, temp = 293.0 $ initial state\n")
+    model_tmpl = File(file_path=str(model_inp)).read()
+    model_tmpl.replace_assignments(
+        {"flux": 2.5e-04, "temp": 300.0},
+        fmt={"flux": "{:.2e}", "temp": "%.1f"},
+        strict=True,
+    )
+    assert model_tmpl[0] == "flux = 2.50e-04, temp = 300.0 $ initial state"
+
+    core_inp = tmp_path / "core.inp"
+    core_inp.write_text("power = ${power_mw * 1e6 : {:.2e}}\nradius = ${radius * 2.0 : %6.2f}\n")
+    core_tmpl = File(file_path=str(core_inp)).read()
+    core_tmpl.replace_expressions({
+        "power_mw": 15.0,
+        "radius": 10.0,
+    })
+    assert core_tmpl[0] == "power = 1.50e+07"
+    assert core_tmpl[1] == "radius =  20.00"
+
+
 
 def test_section_6_case_and_harvesters(tmp_path):
     deck = tmp_path / "model.template"

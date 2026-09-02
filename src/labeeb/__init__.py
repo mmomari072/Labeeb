@@ -18,6 +18,7 @@ from .exceptions import (
     DatabaseError,
     LabeebError,
     SamplingError,
+    TemplateError,
 )
 from .execution import (
     ExecutionBackend,
@@ -76,7 +77,7 @@ from .bundle import (
 from .results import CaseResult, CampaignStateStore, ExecutionStatusRegistry, StatusRegistry, export_case_results
 from .report import write_html_report
 from .logging_config import CaseLoggerAdapter, configure_logging
-from .utils.file_io import File
+from .utils.file_io import File, evaluate_expression, format_value
 
 __version__ = "1.6.0"
 __author__ = "Mohammed Omari"
@@ -87,8 +88,8 @@ __all__ = [
     "CsvHarvester", "StatusRegistry", "ExecutionStatusRegistry", "EventPublisher",
     "CouplingError", "Database", "DatabaseError", "DiscreteSampling", "ExecutionBackend",
     "ExecutionEvent", "ExecutionResult", "ExtractionError", "FOATConstructor", "File", "Flag", "FlagsMap",
-    "Harvester", "InMemorySharedBackend", "JsonHarvester", "JsonlEventPublisher", "LabeebError", "LiveObserver", "LivePlot", "LocalExecutionBackend", "NullEventPublisher", "PlotObserver", "PublisherError", "RedisStreamEventPublisher", "RegexHarvester", "SamplingError", "SharedMemoryBackend", "SharedMemoryError", "WebSocketEventPublisher", "correlation_analysis",
-    "append_execution_event", "export_analysis_bundle", "export_case_results", "export_execution_events", "extract_csv", "extract_json", "extract_regex", "halton_sample",
+    "Harvester", "InMemorySharedBackend", "JsonHarvester", "JsonlEventPublisher", "LabeebError", "LiveObserver", "LivePlot", "LocalExecutionBackend", "NullEventPublisher", "PlotObserver", "PublisherError", "RedisStreamEventPublisher", "RegexHarvester", "SamplingError", "SharedMemoryBackend", "SharedMemoryError", "TemplateError", "WebSocketEventPublisher", "correlation_analysis",
+    "append_execution_event", "evaluate_expression", "export_analysis_bundle", "export_case_results", "export_execution_events", "extract_csv", "extract_json", "extract_regex", "format_value", "halton_sample",
     "latin_hypercube_sample", "load_analysis_bundle", "load_manifest", "morris_screening", "normal_sample", "product",
     "run_extractor", "sample", "sobol_indices", "uniform_sample", "wilks_sample_size",
     "write_html_report", "print_banner", "CaseLoggerAdapter", "configure_logging",

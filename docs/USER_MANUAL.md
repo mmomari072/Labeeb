@@ -152,6 +152,31 @@ template.render_jinja({
 })
 ```
 
+### Assignment-Style Replacement (`File.replace_assignments`)
+Replaces numerical or string values in simulation input decks while preserving whitespace, comments, and delimiters:
+```python
+from labeeb.utils.file_io import File
+
+template = File("model.inp").read()
+template.replace_assignments(
+    {"flux": 2.5e-04, "temp": 300.0},
+    fmt={"flux": "{:.2e}", "temp": "%.1f"},
+    strict=True,
+)
+```
+
+### Inline Expression Replacement (`File.replace_expressions`)
+Safely evaluates mathematical expressions embedded in input decks using `${expr : fmt}` tags:
+```python
+from labeeb.utils.file_io import File
+
+template = File("core.inp").read()
+template.replace_expressions({
+    "power_mw": 15.0,
+    "radius": 10.0,
+})
+```
+
 ---
 
 ## 6. Simulation Execution & Declarative Output Harvesters

@@ -28,6 +28,12 @@ class CaseExecutionError(LabeebError):
     pass
 
 
+class TemplateError(CaseExecutionError):
+    """Raised when template compilation, variable substitution, or expression evaluation fails."""
+
+    pass
+
+
 class CouplingError(LabeebError):
     """Raised when errors occur during multi-code coupling runs."""
 

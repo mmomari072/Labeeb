@@ -244,6 +244,36 @@ template_file.render_jinja({"my_param": 42.0})
 template_file.write("rendered_input.txt")
 ```
 
+#### Option 3: Assignment-Style Replacement (`File.replace_assignments()`)
+For decks configured with assignment records like `x=1` or `flux = 1.23e-04`:
+
+```python
+from labeeb.utils.file_io import File
+
+template = File("deck.inp").read()
+# Replaces values while preserving syntax, separators, whitespace, and comments
+template.replace_assignments(
+    {"flux": 2.50e-04, "temp": 300.0},
+    fmt={"flux": "{:.2e}", "temp": "%.1f"},
+    strict=True,
+)
+```
+
+#### Option 4: Inline Expression Evaluation (`File.replace_expressions()`)
+For parameterized physics decks with embedded mathematical expressions `${expr : fmt}`:
+
+```python
+from labeeb.utils.file_io import File
+
+template = File("core.inp").read()
+# Replaces ${radius * 2.0 : %6.2f} and ${power_mw * 1e6 : {:.2e}} safely
+template.replace_expressions({
+    "radius": 5.0,
+    "power_mw": 10.0,
+})
+```
+
+
 ### D. Coupling Kernel (`labeeb.coupler`)
 Orchestrate coupled iterations between multiple simulation cases (e.g. thermal-hydraulics and neutronics).
 

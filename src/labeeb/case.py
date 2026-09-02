@@ -12,7 +12,7 @@ import pandas as pd
 
 from .coupled_unit import CoupledUnit
 from .database import Attribute, Database
-from .exceptions import CaseExecutionError
+from .exceptions import CaseExecutionError, TemplateError
 from .execution import ExecutionBackend, LocalExecutionBackend
 from .extractors import run_extractor
 from .logging_config import CaseLoggerAdapter
@@ -183,6 +183,12 @@ class Case(CoupledUnit):
         self.execution_backend: ExecutionBackend = LocalExecutionBackend()
         self.harvesters: Dict[str, Any] = {}
         self.input_files: List[file_io.File] = []
+        self.assignment_map: Optional[Dict[str, Any]] = None
+        self.assignment_fmt: Optional[Union[str, Dict[str, Any]]] = None
+        self.strict_assignments: bool = False
+        self.expression_context: Optional[Dict[str, Any]] = None
+        self.strict_expressions: bool = False
+        self.enable_expressions: bool = False
 
         self.main_dir: str = os.getcwd()
         self.run_case_main_dir: str = "omari"
@@ -274,6 +280,40 @@ class Case(CoupledUnit):
             raise CaseExecutionError("Harvester name and file_target are required")
         self.harvesters[name] = (pattern, file_target)
         self.outputs.setdefault(name, [])
+        return self
+
+    def set_assignment_map(
+        self,
+        mapping: Dict[str, Any],
+        fmt: Optional[Union[str, Dict[str, Any]]] = None,
+        strict: bool = False,
+    ) -> "Case":
+        """Configure assignment-style parameter replacement for input decks.
+
+        Args:
+            mapping: Dictionary mapping assignment keys in templates to database column names or values.
+            fmt: Optional format string or dictionary of formatters per key.
+            strict: If True, raise TemplateError if an assignment key is missing from template files.
+        """
+        self.assignment_map = mapping
+        self.assignment_fmt = fmt
+        self.strict_assignments = strict
+        return self
+
+    def set_expression_context(
+        self,
+        context: Optional[Dict[str, Any]] = None,
+        strict: bool = False,
+    ) -> "Case":
+        """Configure inline expression evaluation context for template files.
+
+        Args:
+            context: Optional dictionary of variables and custom functions for expression evaluation.
+            strict: If True, raise TemplateError on undefined variables or expression errors.
+        """
+        self.expression_context = context or {}
+        self.strict_expressions = strict
+        self.enable_expressions = True
         return self
 
     def launch_case(self, case_id: Optional[int] = None, **kwargs: Any) -> "Case":
@@ -547,8 +587,43 @@ class Case(CoupledUnit):
         return self
 
     def _write_input(self, flagsmap: Dict[str, Any]) -> "Case":
+        row_data = self.database.get_row(self.case_id) if self.database is not None else {}
         for f in self.input_files:
-            f.replace(flagsmap)
+            has_rendered = False
+            if flagsmap:
+                f.replace(flagsmap)
+                has_rendered = True
+
+            if getattr(self, "assignment_map", None):
+                assignments: Dict[str, Any] = {}
+                for key, attr_or_val in self.assignment_map.items():
+                    if isinstance(attr_or_val, str) and attr_or_val in row_data:
+                        assignments[key] = row_data[attr_or_val]
+                    else:
+                        assignments[key] = attr_or_val
+                f.replace_assignments(
+                    assignments,
+                    strict=getattr(self, "strict_assignments", False),
+                    fmt=getattr(self, "assignment_fmt", None),
+                    evaluate_expressions=True,
+                    context=row_data,
+                    reset=not has_rendered,
+                )
+                has_rendered = True
+
+            if getattr(self, "enable_expressions", False) or getattr(self, "expression_context", None):
+                ctx = {
+                    **{k.lower(): v for k, v in row_data.items()},
+                    **row_data,
+                    **(getattr(self, "expression_context", {}) or {}),
+                }
+                f.replace_expressions(
+                    ctx,
+                    strict=getattr(self, "strict_expressions", False),
+                    reset=not has_rendered,
+                )
+                has_rendered = True
+
             f.write(os.path.join(self.current_case_dir, f.filename))
         return self
 
