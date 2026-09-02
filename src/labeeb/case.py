@@ -209,7 +209,42 @@ class Case(CoupledUnit):
         self.execution_history: List[Dict[str, Any]] = []
         self._output_att()
 
+        # Failure-handling policy (LAB-FAILURE-POLICY-01):
+        #   command_failure_policy: "stop" (default, current semantics - raise),
+        #                           "continue" (record FAILED, skip remaining commands),
+        #                           "retry" (retry up to max_attempts, then stop).
+        #   harvest_failure_policy: "stop" (default, current semantics - raise) or
+        #                           "continue" (record None outputs instead of raising).
+        # Repeated command retries/recorded failures are stored in
+        # execution_history and surfaced through `_case_failed` / `failure` so
+        # launchers and campaigns can record the failure without an exception.
+        self.command_failure_policy: str = "stop"
+        self.harvest_failure_policy: str = "stop"
+        self.max_attempts: int = 1
+        self._case_failed: bool = False
+        self.failure: Optional[str] = None
+
         self._parse_kwargs(**kwargs)
+        self._validate_failure_policies()
+
+    def _validate_failure_policies(self) -> None:
+        """Validate failure-policy configuration (called after kwargs parsing)."""
+        if self.command_failure_policy not in ("stop", "continue", "retry"):
+            raise CaseExecutionError(
+                "command_failure_policy must be 'stop', 'continue', or 'retry', "
+                f"got '{self.command_failure_policy}'"
+            )
+        if self.harvest_failure_policy not in ("stop", "continue"):
+            raise CaseExecutionError(
+                "harvest_failure_policy must be 'stop' or 'continue', "
+                f"got '{self.harvest_failure_policy}'"
+            )
+        if not isinstance(self.max_attempts, int) or self.max_attempts < 1:
+            raise CaseExecutionError("max_attempts must be an integer >= 1")
+        if self.command_failure_policy == "retry" and self.max_attempts < 2:
+            raise CaseExecutionError(
+                "max_attempts must be >= 2 when command_failure_policy='retry'"
+            )
 
     def import_database(self, filename: str = "omari.xlsx", sheetname: str = "omari") -> "Case":
         """
@@ -350,6 +385,8 @@ class Case(CoupledUnit):
         # unsuffixed naming.
         attempt = kwargs.pop("_attempt", 0) or 0
         self._attempt = attempt
+        self._case_failed = False
+        self.failure = None
         dir_name = (
             f"{self.run_case_sub_dir}_{idx}"
             if not attempt
@@ -454,6 +491,12 @@ class Case(CoupledUnit):
                 self.case_id = i
                 try:
                     self.launch_case(**kwargs)
+                    if getattr(self, "_case_failed", False):
+                        # continue-policy failure: outputs already recorded;
+                        # surface the failure without double-recording Nones.
+                        exc = CaseExecutionError(self.failure or "Case failed (continue policy)")
+                        self._record_failed_case(exc)
+                        failures.append(exc)
                 except CaseExecutionError as exc:
                     self._record_failed_case(exc)
                     failures.append(exc)
@@ -542,56 +585,104 @@ class Case(CoupledUnit):
         )
         if hasattr(self.execution_backend, "set_logger"):
             self.execution_backend.set_logger(command_logger)  # type: ignore[attr-defined]
+        import time
+        from datetime import datetime
+
         try:
             for cmd in self.exe_cmd:
+                if getattr(self, "_case_failed", False):
+                    break  # continue policy: stop after a recorded failure
                 timeout = getattr(self, "timeout", None)
                 log_file = getattr(self, "log_file", None)
                 if log_file and not os.path.isabs(log_file):
                     log_file = os.path.join(self.current_case_dir, log_file)
 
-                # Record execution details
-                import time
-                from datetime import datetime
-                t_start = time.time()
-                t_stamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-                result = self.execution_backend.run(
-                    cmd, cwd=self.current_case_dir, timeout=timeout, log_file=log_file
+                attempts_left = (
+                    self.max_attempts if self.command_failure_policy == "retry" else 1
                 )
-                if getattr(self, "capture_output", False) and self.current_case_dir:
-                    if result.stdout:
-                        with open(os.path.join(self.current_case_dir, "stdout.log"), "a", encoding="utf-8") as stream:
-                            stream.write(result.stdout)
-                    if result.stderr:
-                        with open(os.path.join(self.current_case_dir, "stderr.log"), "a", encoding="utf-8") as stream:
-                            stream.write(result.stderr)
-                code = result.returncode
+                while attempts_left > 0:
+                    attempts_left -= 1
 
-                t_duration = time.time() - t_start
-                status_str = "SUCCESS" if code == 0 else ("TIMEOUT" if code == -999 else "FAILED")
+                    # Record execution details
+                    t_start = time.time()
+                    t_stamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-                self.execution_history.append({
-                    "case_id": self.case_id,
-                    "command": redact_sensitive(cmd),
-                    "exit_code": code,
-                    "status": status_str,
-                    "timestamp": t_stamp,
-                    "duration_seconds": round(result.duration_seconds or t_duration, 3)
-                })
-                if result.event is not None:
-                    self.execution_history[-1].update(result.event.to_dict())
-                    self.execution_history[-1]["execution_event"] = result.event.to_dict()
-
-                if code != 0:
-                    logger.error(f"Simulation command returned exit status {status_str} ({code}) for command '{redact_sensitive(cmd)}'")
-                    raise CaseExecutionError(
-                        f"Simulation command failed for case {self.case_id}: '{redact_sensitive(cmd)}' ({status_str}, exit code {code})"
+                    result = self.execution_backend.run(
+                        cmd, cwd=self.current_case_dir, timeout=timeout, log_file=log_file
                     )
-                exit_codes.append(code)
+                    if getattr(self, "capture_output", False) and self.current_case_dir:
+                        if result.stdout:
+                            with open(os.path.join(self.current_case_dir, "stdout.log"), "a", encoding="utf-8") as stream:
+                                stream.write(result.stdout)
+                        if result.stderr:
+                            with open(os.path.join(self.current_case_dir, "stderr.log"), "a", encoding="utf-8") as stream:
+                                stream.write(result.stderr)
+                    code = result.returncode
+
+                    t_duration = time.time() - t_start
+                    status_str = "SUCCESS" if code == 0 else ("TIMEOUT" if code == -999 else "FAILED")
+                    message = None
+                    if result.event is not None:
+                        message = result.event.message
+
+                    if code != 0 and attempts_left > 0:
+                        # Policy "retry": record the failed attempt, then retry.
+                        logger.warning(
+                            "Simulation command returned exit status %s (%s) for command '%s'; "
+                            "%s retr%s remaining",
+                            status_str, code, redact_sensitive(cmd), attempts_left,
+                            "y" if attempts_left == 1 else "ies",
+                        )
+                        self.execution_history.append({
+                            "case_id": self.case_id,
+                            "command": redact_sensitive(cmd),
+                            "exit_code": code,
+                            "status": status_str,
+                            "timestamp": t_stamp,
+                            "duration_seconds": round(result.duration_seconds or t_duration, 3),
+                            "message": message or f"attempt failed; {attempts_left} retr{'y' if attempts_left == 1 else 'ies'} left",
+                        })
+                        if result.event is not None:
+                            self.execution_history[-1].update(result.event.to_dict())
+                            self.execution_history[-1]["execution_event"] = result.event.to_dict()
+                        continue
+
+                    self.execution_history.append({
+                        "case_id": self.case_id,
+                        "command": redact_sensitive(cmd),
+                        "exit_code": code,
+                        "status": status_str,
+                        "timestamp": t_stamp,
+                        "duration_seconds": round(result.duration_seconds or t_duration, 3)
+                    })
+                    if result.event is not None:
+                        self.execution_history[-1].update(result.event.to_dict())
+                        self.execution_history[-1]["execution_event"] = result.event.to_dict()
+
+                    if code != 0:
+                        logger.error(f"Simulation command returned exit status {status_str} ({code}) for command '{redact_sensitive(cmd)}'")
+                        if self.command_failure_policy == "continue":
+                            self._mark_case_failed(
+                                f"Simulation command failed for case {self.case_id}: "
+                                f"'{redact_sensitive(cmd)}' ({status_str}, exit code {code})"
+                            )
+                            # Record the failure in the last history entry's message
+                            self.execution_history[-1]["message"] = self.failure
+                            break  # skip remaining commands for this case
+                        raise CaseExecutionError(
+                            f"Simulation command failed for case {self.case_id}: '{redact_sensitive(cmd)}' ({status_str}, exit code {code})"
+                        )
+                    exit_codes.append(code)
+                    break
         except Exception as e:
             logger.error(f"Error during simulation command execution: {e}")
             raise CaseExecutionError(f"Failed to execute simulation commands: {e}") from e
         return exit_codes
+
+    def _mark_case_failed(self, message: str) -> None:
+        """Record a policy-continued failure so launchers/campaigns see it."""
+        self._case_failed = True
+        self.failure = self.failure or message
 
     def _cd(self, directory: str) -> "Case":
         os_ops.chdir(directory)
@@ -643,6 +734,12 @@ class Case(CoupledUnit):
         for fname, cols in self.output_files.items():
             fullname = os.path.join(self.current_case_dir, fname)
             if not os_ops.isfile(fullname):
+                if self.harvest_failure_policy == "continue":
+                    logger.warning(f"Output file '{fullname}' was not produced (continue policy)")
+                    for col in cols:
+                        parsed_outputs[col] = [None]
+                    self._mark_case_failed(f"Required output file '{fullname}' was not produced")
+                    continue
                 raise CaseExecutionError(f"Required output file '{fullname}' was not produced")
             try:
                 df = pd.read_csv(fullname, usecols=cols, low_memory=True)
@@ -650,6 +747,11 @@ class Case(CoupledUnit):
                     parsed_outputs[col] = df[col].tolist()
             except Exception as e:
                 logger.error(f"Failed to read output file {fullname}: {e}")
+                if self.harvest_failure_policy == "continue":
+                    for col in cols:
+                        parsed_outputs[col] = [None]
+                    self._mark_case_failed(f"Failed to read simulation output from '{fullname}': {e}")
+                    continue
                 raise CaseExecutionError(f"Failed to read simulation output from '{fullname}': {e}") from e
         for col, values in parsed_outputs.items():
             self.outputs[col].append(values)
@@ -669,6 +771,11 @@ class Case(CoupledUnit):
                         continue
                     self.outputs[name].append(run_extractor(target, pattern))
             except Exception as exc:
+                if self.harvest_failure_policy == "continue":
+                    logger.warning(f"Failed to harvest '{name}': {exc} (continue policy)")
+                    self.outputs[name].append(None)
+                    self._mark_case_failed(f"Failed to harvest '{name}': {exc}")
+                    continue
                 raise CaseExecutionError(
                     f"Failed to harvest '{name}': {exc}"
                 ) from exc
@@ -676,8 +783,11 @@ class Case(CoupledUnit):
 
     def _record_failed_case(self, exc: BaseException) -> None:
         """Record one failed result for every declared output column."""
-        for col in self.outputs:
-            self.outputs[col].append(None)
+        # continue-policy failures already recorded their outputs (None/partial);
+        # avoid double-recording so row alignment is preserved.
+        if not getattr(self, "_case_failed", False):
+            for col in self.outputs:
+                self.outputs[col].append(None)
         if not any(
             entry.get("case_id") == self.case_id
             and entry.get("status") in {"FAILED", "TIMEOUT"}
@@ -703,6 +813,7 @@ class Case(CoupledUnit):
     def set_vars(self, **kwargs: Any) -> "Case":
         """Set execution parameters dynamically."""
         self._parse_kwargs(**kwargs)
+        self._validate_failure_policies()
         return self
 
     def update_db(self, **kwargs: Any) -> None:
@@ -714,6 +825,8 @@ def _run_case_worker(case_obj: Case, case_id: int, kwargs: Dict[str, Any]) -> Tu
     """Helper worker function to launch a single case in a separate process."""
     try:
         case_obj.launch_case(case_id=case_id, **kwargs)
+        if getattr(case_obj, "_case_failed", False):
+            raise CaseExecutionError(case_obj.failure or "Case failed (continue policy)")
     except CaseExecutionError as exc:
         case_obj._record_failed_case(exc)
     return case_obj.outputs, case_obj.execution_history, case_id

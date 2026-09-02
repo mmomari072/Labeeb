@@ -261,6 +261,13 @@ class Campaign:
         if "log_file" in execution:
             case.log_file = execution["log_file"]
         case.capture_output = bool(execution.get("capture_output", False))
+        if "command_failure_policy" in execution:
+            case.command_failure_policy = execution["command_failure_policy"]
+        if "harvest_failure_policy" in execution:
+            case.harvest_failure_policy = execution["harvest_failure_policy"]
+        if "max_attempts" in execution:
+            case.max_attempts = int(execution["max_attempts"])
+        case._validate_failure_policies()
         return case
 
     def _append_lifecycle_event(
@@ -470,7 +477,13 @@ class Campaign:
                     self._append_lifecycle_event("case_start", run_root, case_id=case_id, attempt=attempt, status="STARTED")
                     try:
                         case.launch_case(case_id, _attempt=attempt)
-                        result = CaseResult(case_id, parameters, "SUCCESS", 0, time.monotonic() - started)
+                        if getattr(case, "_case_failed", False):
+                            result = CaseResult(
+                                case_id, parameters, "FAILED", None, time.monotonic() - started,
+                                failure=case.failure or "Case failed (continue policy)",
+                            )
+                        else:
+                            result = CaseResult(case_id, parameters, "SUCCESS", 0, time.monotonic() - started)
                     except CaseExecutionError as exc:
                         result = CaseResult(
                             case_id, parameters, "FAILED", None, time.monotonic() - started, failure=str(exc)

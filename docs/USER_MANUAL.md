@@ -246,6 +246,57 @@ Outputs are declared explicitly — never guessed from the filesystem:
   when the file was not produced, the run records `None` for that metric instead
   of failing — useful for codes that emit auxiliary files conditionally.
 
+#### Failure-Handling Policies
+Command and output-harvesting failures are configurable per `Case` — the
+defaults preserve the classic behavior exactly:
+
+```python
+from labeeb import Case
+
+# Defaults (unchanged semantics): stop on the first failure.
+case = Case(name="sim", output_files={}, command_failure_policy="stop",
+            harvest_failure_policy="stop")
+
+# continue: record the failure (FAILED history entry + case.failure), skip the
+# remaining commands, and let the launcher/campaign record the case as failed
+# without re-raising at the launch_case call site.
+case.command_failure_policy = "continue"
+
+# retry: rerun a failed command up to max_attempts (each failed attempt is
+# recorded in execution_history); exhaustion falls back to stop semantics.
+case.command_failure_policy = "retry"
+case.max_attempts = 3
+```
+
+Policy options:
+
+* `command_failure_policy`: `"stop"` (default) raises `CaseExecutionError` on
+  the first failing command — exactly the pre-1.16 behavior; `"continue"`
+  records the failure (`status=FAILED`, exit code, message), skips remaining
+  commands for the case, and surfaces it through `case._case_failed` /
+  `case.failure` so `Case.launch()` aggregates it and `Campaign.run()` records a
+  `FAILED` result (which can then be retried on a later run); `"retry"` reruns
+  the failed command up to `max_attempts` (>= 2) times, recording each failed
+  attempt, then stops.
+* `harvest_failure_policy`: `"stop"` (default) raises when a required output
+  file is missing/unreadable or a harvester fails; `"continue"` appends `None`
+  for the affected metrics, records the failure, and continues the run.
+* `max_attempts`: retry budget used by `command_failure_policy="retry"`.
+
+Campaigns accept the same configuration in the manifest:
+
+```yaml
+execution:
+  run_dir: runs
+  command_failure_policy: continue   # or stop / retry
+  harvest_failure_policy: continue   # or stop
+  max_attempts: 3                    # used when policy is retry
+```
+
+All recorded failures remain visible in `case.execution_history` (status, exit
+code, message), in `Campaign` results (`status="FAILED"`, `failure=...`), and —
+when configured — as `OutputCatalog` rows and `case_failure` lifecycle events.
+
 ### Structured Execution Logging & Redaction
 Every shell command executed through `Case.launch()` or `LocalExecutionBackend` produces an auditable `ExecutionEvent` record and, when JSON logging is enabled, a structured log line. Events are also recorded per case in `case.execution_history` and can be exported:
 

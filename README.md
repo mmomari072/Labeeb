@@ -142,7 +142,13 @@ Failure/output behavior: a failing case is recorded (FAILED status, catalog row,
 with `optional=True` record `None` instead of failing when their file is absent;
 observer attach/detach/close errors are logged and isolated — plotting can never
 fail the campaign — and the observer is detached and closed even when `run()`
-raises.
+raises. Command and harvest failures are policy-driven:
+`command_failure_policy="stop"|"continue"|"retry"` (default `stop`, the classic
+fail-fast raise; `retry` reruns up to `max_attempts`) and
+`harvest_failure_policy="stop"|"continue"` (default `stop`) — set per `Case`,
+via `set_vars`, or through `execution.command_failure_policy` /
+`harvest_failure_policy` / `max_attempts` in the manifest. Every failure is
+recorded (history, FAILED results, catalog rows) regardless of policy.
 
 Designs can also be generated inside the same Python file:
 
