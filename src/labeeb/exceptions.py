@@ -38,3 +38,9 @@ class CouplingError(LabeebError):
     """Raised when errors occur during multi-code coupling runs."""
 
     pass
+
+
+class BackupError(LabeebError):
+    """Raised when backup creation, validation, or restore fails."""
+
+    pass

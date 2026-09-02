@@ -165,6 +165,37 @@ metrics, artifact paths, stdout/stderr files, byte counts, redacted command, and
 status — nothing is overwritten, so retries and failures stay queryable and
 exportable to CSV/JSON/Parquet.
 
+### Backup & Restore (`labeeb.backup`)
+Back up campaign state and run artifacts as one validated, atomic snapshot:
+
+```python
+from labeeb import create_backup, validate_backup, restore_backup
+
+backup_dir = create_backup(
+    "backups/campaign_20260902",
+    state_path="campaign_state.sqlite",     # sqlite-safe online backup snapshot
+    artifacts=["runs/", "notes.txt"],       # copied byte-for-byte
+)
+manifest = validate_backup(backup_dir)      # version + every SHA-256 + PRAGMA quick_check
+restore_backup(
+    backup_dir,
+    state_path="restored_state.sqlite",     # temp-file + atomic replace
+    artifacts_root="restored_runs/",
+)
+```
+
+SQLite state files are captured with the sqlite3 online-backup API from a
+read-only connection — never by copying a live file — and every backup carries a
+`manifest.json` (format/version/created_at + per-file SHA-256 checksums).
+Backups are staged beside the destination and atomically renamed into place;
+existing non-empty destinations are never overwritten. Restore validates the
+whole backup first, then restores the database via a sibling temp file and
+`os.replace`, and artifacts via atomic per-file replacement. Shared-memory
+snapshots follow an explicit opt-in policy: memory is derived/volatile and is
+exported only when you pass `memory_snapshot={...}` (e.g.
+`campaign.memory.snapshot()`), producing `shared_memory.json`; otherwise the
+manifest records that memory was deliberately excluded.
+
 ### B3. Execution Backends (`labeeb.execution`)
 `Case` uses an injectable execution backend. The built-in local backend runs
 shell commands with an explicit case directory, timeout, optional log file,

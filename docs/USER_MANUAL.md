@@ -371,6 +371,42 @@ Each record stores `case_id`, `attempt`, `unit`, `status`, redacted `command`,
 failure `message`, and `started_at`/`ended_at` timing. Command and message
 strings are redacted before persistence.
 
+### Backup & Restore (`labeeb.backup`)
+Campaign state databases and run artifacts can be snapshotted as one validated,
+atomic backup directory:
+
+```python
+from labeeb import create_backup, restore_backup, validate_backup
+
+backup_dir = create_backup(
+    "backups/study_01",
+    state_path="campaign_state.sqlite",        # CampaignStateStore database
+    artifacts=["runs/"],                       # run artifact tree(s)
+    memory_snapshot=campaign.memory.snapshot(),  # explicit opt-in (never implicit)
+)
+manifest = validate_backup(backup_dir)         # raises BackupError on any mismatch
+restore_backup(backup_dir, state_path="restored.sqlite", artifacts_root="restored_runs/")
+```
+
+Semantics:
+
+* SQLite state files are captured with the sqlite3 *online-backup API* from a
+  read-only connection — a consistent snapshot even while another process is
+  writing — never by copying the live file.
+* Each backup contains `manifest.json` with `format`/`version` metadata,
+  creation time, and per-file SHA-256 checksums; `validate_backup()` re-checksums
+  every file and runs `PRAGMA quick_check` on the contained database.
+* Destinations are staged next to the target and published atomically
+  (`os.replace`); an existing non-empty destination is never overwritten.
+* Restore validates the entire backup first, then restores the database through
+  a sibling temp file + atomic replace (close live handles first) and artifacts
+  via atomic per-file replacement into `artifacts_root`.
+* Shared memory follows an **explicit snapshot export policy**: memory is
+  derived/volatile and is only included when `memory_snapshot=` is passed
+  (stored as `shared_memory.json`); otherwise the manifest records the
+  deliberate exclusion.
+* Errors raise the domain exception `labeeb.BackupError`.
+
 ---
 
 ## 7. Stateful Campaigns & Status Registry
