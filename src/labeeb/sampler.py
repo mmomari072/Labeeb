@@ -7,7 +7,7 @@ import itertools
 import logging
 import math
 import random
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Sequence, Union
 
 import numpy as np
 
@@ -283,3 +283,127 @@ class OATConstructor(FOATConstructor):
                 indices[attr] = index
                 append_case(values, indices)
         return self.samples
+def correlated_normal_sample(
+    means: Sequence[float],
+    cov: Sequence[Sequence[float]],
+    size: int = 1,
+    seed: Optional[int] = None,
+    rng: Optional[Any] = None,
+) -> np.ndarray:
+    """Draw samples from a multivariate normal distribution with correlation.
+
+    Args:
+        means: Mean vector (length d).
+        cov: d x d covariance matrix. Correlations enter through the off-diagonal
+            entries; the matrix must be symmetric positive semi-definite (tiny
+            negative eigenvalues from float rounding are tolerated).
+        size: Number of joint samples to draw.
+        seed: Optional reproducibility seed (local RandomState; global stream
+            untouched when provided).
+        rng: Optional pre-built random generator (np.random.RandomState or
+            Generator). Takes precedence over ``seed``.
+
+    Returns:
+        Array of shape ``(size, d)`` — each row is one joint draw, so columns of
+        the result can seed several ``Database`` attributes that stay correlated.
+
+    Raises:
+        SamplingError: On dimension mismatches, non-finite inputs, non-PSD
+            covariance (beyond rounding tolerance), or invalid ``size``.
+    """
+    if not isinstance(size, int) or size < 1:
+        raise SamplingError(f"Sample size must be a positive integer, got {size!r}")
+    mean_vec = np.asarray(means, dtype=float)
+    if mean_vec.ndim != 1 or mean_vec.size < 1:
+        raise SamplingError("Means must be a non-empty 1D sequence")
+    cov_mat = np.asarray(cov, dtype=float)
+    if cov_mat.shape != (mean_vec.size, mean_vec.size):
+        raise SamplingError(
+            f"Covariance must be {mean_vec.size}x{mean_vec.size} to match {mean_vec.size} means, "
+            f"got shape {cov_mat.shape}"
+        )
+    if not np.all(np.isfinite(mean_vec)) or not np.all(np.isfinite(cov_mat)):
+        raise SamplingError("Means and covariance must contain only finite values")
+    if not np.allclose(cov_mat, cov_mat.T):
+        raise SamplingError("Covariance matrix must be symmetric")
+    eigen = np.linalg.eigvalsh(cov_mat)
+    if eigen.min() < -1e-8:
+        raise SamplingError(
+            "Covariance matrix is not positive semi-definite "
+            f"(smallest eigenvalue {eigen.min():.2e}); correlations must satisfy |rho| <= 1"
+        )
+    if np.any(np.diag(cov_mat) < 0.0):
+        raise SamplingError("Covariance diagonal (variances) must be non-negative")
+
+    if rng is not None:
+        rng_obj = rng
+    elif seed is not None:
+        rng_obj = np.random.RandomState(seed)
+    else:
+        rng_obj = np.random
+    return np.asarray(rng_obj.multivariate_normal(mean_vec, cov_mat, size), dtype=float)
+
+
+def truncated_normal_sample(
+    mean: float,
+    std: float,
+    low: Optional[float] = None,
+    high: Optional[float] = None,
+    size: int = 1,
+    seed: Optional[int] = None,
+    rng: Optional[Any] = None,
+) -> np.ndarray:
+    """Draw from a normal distribution truncated to ``[low, high]``.
+
+    Pure-numpy rejection sampling keeps Labeeb dependency-free (no SciPy).
+    One-sided truncation is allowed by omitting the other bound.
+
+    Args:
+        mean: Distribution mean.
+        std: Distribution standard deviation (must be > 0).
+        low: Optional lower bound (inclusive).
+        high: Optional upper bound (inclusive).
+        size: Number of samples to return.
+        seed: Optional reproducibility seed (local RandomState).
+        rng: Optional pre-built random generator; takes precedence over ``seed``.
+
+    Returns:
+        Array of ``size`` samples all inside the truncation interval.
+
+    Raises:
+        SamplingError: On invalid bounds/std/size, or when the interval is so
+            far into the tail that rejection sampling cannot fill the request.
+    """
+    if not isinstance(size, int) or size < 1:
+        raise SamplingError(f"Sample size must be a positive integer, got {size!r}")
+    if not (np.isfinite(mean) and np.isfinite(std)) or std <= 0.0:
+        raise SamplingError("Mean must be finite and std must be positive")
+    lo = -float("inf") if low is None else float(low)
+    hi = float("inf") if high is None else float(high)
+    if low is None and high is None:
+        raise SamplingError("At least one truncation bound is required (low and/or high)")
+    if lo > hi:
+        raise SamplingError(f"Truncation bounds are inverted: low={lo} > high={hi}")
+    if lo == hi:
+        raise SamplingError(f"Truncation interval is degenerate: low == high == {lo}")
+
+    if rng is not None:
+        rng_obj = rng
+    elif seed is not None:
+        rng_obj = np.random.RandomState(seed)
+    else:
+        rng_obj = np.random
+
+    accepted: List[float] = []
+    chunk_size = 4096
+    max_chunks = 8192  # ~33.5M proposals cap before giving up on pathological tails
+    for _ in range(max_chunks):
+        batch = rng_obj.normal(mean, std, chunk_size)
+        mask = (batch >= lo) & (batch <= hi)
+        accepted.extend(batch[mask].tolist())
+        if len(accepted) >= size:
+            return np.asarray(accepted[:size], dtype=float)
+    raise SamplingError(
+        f"Truncation interval [{lo}, {hi}] rejected too many proposals for N(mean={mean}, "
+        f"std={std}); widen the interval or reduce the sample size"
+    )

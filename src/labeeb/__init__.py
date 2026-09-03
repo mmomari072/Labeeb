@@ -49,12 +49,14 @@ from .sampler import (
     DiscreteSampling,
     FOATConstructor,
     OATConstructor,
+    correlated_normal_sample,
     halton_sample,
     latin_hypercube_sample,
     normal_sample,
     product,
     sample,
     uniform_sample,
+    truncated_normal_sample,
 )
 from .shared_memory import (
     CampaignMemory,
@@ -109,6 +111,7 @@ __all__ = [
     "latin_hypercube_sample", "load_analysis_bundle", "load_manifest", "morris_screening", "normal_sample", "product",
     "restore_backup", "run_extractor", "sample", "sobol_indices", "uniform_sample", "wilks_sample_size", "SurrogateModel", "optimize_scipy", "optimize_optuna", "rank_candidates",
     "validate_backup", "write_html_report", "print_banner", "CaseLoggerAdapter", "configure_logging",
+    "correlated_normal_sample", "truncated_normal_sample",
 ]
 
 def print_banner() -> None:

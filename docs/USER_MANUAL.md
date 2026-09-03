@@ -177,6 +177,34 @@ db.add_sampled_attribute("INLET_TEMP", lambda size: uniform_sample(25.0, 35.0, s
 db.add_sampled_attribute("CORE_FLOW", lambda size: normal_sample(1300.0, 50.0, size), size=8)
 ```
 
+### Correlated & Truncated Sampling (V2-UQ)
+Joint draws with correlation and physically bounded marginals:
+
+```python
+from labeeb import correlated_normal_sample, truncated_normal_sample
+
+# 1) Correlated joint draws (rows stay correlated across attributes)
+joint = correlated_normal_sample(
+    [300.0, 15.0], [[900.0, 30.0], [30.0, 1.0]], size=200, seed=1
+)
+db = Database(data={
+    "TEMP": joint[:, 0].tolist(),   # mean 300, variance 900 (rho = 30/30 = 1.0)
+    "FLUX": joint[:, 1].tolist(),
+})
+
+# 2) Truncated/bounded normal marginal (e.g. cladding limits 5..15 mm)
+db2 = Database(data={"case": list(range(8))})
+db2.add_sampled_attribute(
+    "CLAD",
+    lambda size: truncated_normal_sample(10.0, 2.0, low=5.0, high=15.0, size=size, seed=2),
+    size=8,
+)
+```
+
+`correlated_normal_sample` validates the covariance (symmetric, positive
+semi-definite, `|rho| <= 1`) and `truncated_normal_sample` supports one-sided
+bounds via `low=`/`high=` alone; both accept `seed=` for reproducibility.
+
 ### Advanced Sampling: Latin Hypercube & Halton Sequences
 Generate space-filling low-discrepancy sequences for uncertainty quantification using the `size` parameter:
 
