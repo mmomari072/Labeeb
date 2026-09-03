@@ -173,7 +173,7 @@ Implement these after the release blockers to make Labeeb suitable for repeatabl
   - Add safe matching, formatting controls, and regression tests for repeated
     keys, scientific notation, and missing assignments.
 - [ ] **Fixed-Width & Fortran Card Formatters**:
-  - Strict column-aligned text formatting (e.g., 5-character / 10-character cards for legacy codes like MCNP and RELAP5) to prevent overflow errors.
+  - Strict column-aligned text formatting for legacy fixed-width input cards to prevent overflow errors.
 
 ---
 
@@ -184,7 +184,7 @@ Implement these after the release blockers to make Labeeb suitable for repeatabl
 - [ ] **Execution Status Registry**: Detailed tracking and database recording of exit codes, execution wall-clock time, and stdout/stderr status per case.
 - [ ] **Declarative Output Harvesters**:
   - Declarative pattern extractors (`runner.add_harvester(name, pattern, file_target)`) that parse stdout/output files and append columns back into `Database`.
-  - Built-in parsers for standard domain outputs (e.g. MCNP tallies / $k_{eff}$, RELAP5/TRACE strip charts, Serpent detector files, OpenMC HDF5 outputs).
+  - Built-in parsers for common domain outputs such as tally files, strip charts, detector files, and HDF5 outputs.
 
 ---
 

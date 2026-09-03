@@ -67,7 +67,7 @@
 - [ ] Define a harvester protocol returning named values or a domain exception.
 - [ ] Implement regex/text, CSV, and JSON harvesters with declared units and missing-field failures.
 - [ ] Attach harvested metrics to aligned `CaseResult` records without shortening failed campaigns.
-- [ ] Add extension hooks for MCNP, RELAP5/TRACE, Serpent, and OpenMC adapters without requiring those tools at import time.
+- [ ] Add extension hooks for external simulation-code adapters without requiring those tools at import time.
 
 ## Task 5: Coupling stability and restart
 

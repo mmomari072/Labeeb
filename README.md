@@ -3,7 +3,7 @@
 [![Python Version](https://img.shields.io/badge/python-3.8%2B-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-**Labeeb** is a professional, general-purpose Python API package for conducting sensitivity analyses, uncertainty studies, and parameter sweeps on any simulation code (e.g. MCNP, RELAP5, or general numerical simulators) that relies on text files as input decks.
+**Labeeb** is a professional, general-purpose Python API package for conducting sensitivity analyses, uncertainty studies, and parameter sweeps on any simulation code that relies on text files as input decks.
 
 > 📖 **Comprehensive Guide**: See the complete [v1.6.0 User Manual & API Guide](docs/USER_MANUAL.md) for in-depth examples covering declarative harvesters, coupling stability controls, and non-blocking shared campaign memory.
 
@@ -384,14 +384,14 @@ from labeeb.case import Case
 from labeeb.coupler import Coupler
 from labeeb.database import Database
 
-mcnp_case = Case("mcnp")
-relap_case = Case("relap")
+solver_a = Case("solver_a")
+solver_b = Case("solver_b")
 
 # Define coupled sequences
 coupler = Coupler(name="coupled_neutronics_th")
 coupler.add_cases({
-    mcnp_case: ["RHO"],  # Only map RHO to mcnp
-    relap_case: ["WF"]   # Only map WF to relap
+    solver_a: ["RHO"],  # Only map RHO to solver_a
+    solver_b: ["WF"]   # Only map WF to solver_b
 })
 
 coupler.database = Database(data={
@@ -422,7 +422,7 @@ before a run, or parsing/validating results right after one.
 from labeeb.case import Case
 from labeeb.database import Database
 
-case = Case(name="mcnp")
+case = Case(name="solver")
 case.database = Database(data={"RHO": [19.0]})
 # ... FlagsMap / input files / exe_cmd as above ...
 
@@ -445,8 +445,8 @@ Each child's own convergence budget (`max_exec`/`check_fn`) is set at
 `add_case()` time and can be changed between coupling steps:
 
 ```python
-coupler.add_case(mcnp_case, attributes=["RHO"], max_exec=5, check_fn=check_keff_converged)
-coupler.set_unit_convergence("mcnp", max_exec=8)  # retune mid-run
+coupler.add_case(solver_a, attributes=["RHO"], max_exec=5, check_fn=check_keff_converged)
+coupler.set_unit_convergence("solver_a", max_exec=8)  # retune mid-run
 
 # One coupling step: every child runs to ITS OWN convergence (in order),
 # then coupling functions fire exactly once -- after all children have

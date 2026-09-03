@@ -1,6 +1,6 @@
 """
 Labeeb: Sensitivity and Uncertainty Analysis interface for text-based input deck codes.
-Designed for simulation-code coupling and sensitivity analysis (MCNP, RELAP5, etc.).
+Designed for simulation-code coupling and sensitivity analysis.
 """
 
 import os

@@ -1,6 +1,6 @@
 """
 File I/O utilities for searching, replacing placeholders, and processing text files.
-Used heavily for managing code input decks (e.g. MCNP, RELAP5 inputs).
+Used for managing text-based simulation input decks.
 """
 
 import ast

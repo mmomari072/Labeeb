@@ -1,6 +1,6 @@
 """
-Coupler module to couple multiple cases (e.g., MCNP and RELAP5 simulations)
-in an iterative loop, utilizing database parameters and user-defined coupling functions.
+Coupler module for iterative coupling of multiple simulation cases using
+database parameters and user-defined coupling functions.
 """
 
 import copy

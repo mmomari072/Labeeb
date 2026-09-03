@@ -100,7 +100,7 @@ explicitly enabled with `LABEEB_SHOW_BANNER` or `print_banner()`.
 * **Subprocess Runner**: Executes simulation commands safely with environment preservation and error detection.
 
 ### 2.4 Coupling Subsystem (`labeeb.coupler`)
-* **Multi-Code Iterative Solver**: Couples disparate simulation codes (e.g. neutronics codes like MCNP and thermal-hydraulic codes like RELAP5).
+* **Multi-Code Iterative Solver**: Couples disparate simulation codes with shared parameters and feedback callbacks.
 * **Feedback Architecture**: Coordinates sequential execution of units, updates cross-mapped parameters, and invokes coupling functions until convergence.
 * **Composite Nesting**: `add_case()` accepts either a `Case` or another `Coupler` as a child, uniformly -- enabling sub-coupling (a `Coupler` nested inside a parent `Coupler`).
 * **Per-Unit Convergence Budget**: Each child's `max_exec`/`check_fn` are stored on the parent, keyed by child name (`set_unit_convergence()`), settable at `add_case()` time and mutable between coupling steps.

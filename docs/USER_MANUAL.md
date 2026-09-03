@@ -163,7 +163,7 @@ For dynamic loops, conditionals, and expressions, pass context dictionaries to `
 ```python
 from labeeb.utils.file_io import File
 
-template = File("relap_deck.jinja2")
+template = File("simulation_deck.jinja2")
 template.render_jinja({
     "power": 20.0,
     "channels": [{"id": 1, "flow": 500.0}, {"id": 2, "flow": 600.0}]
@@ -296,7 +296,7 @@ manifest = CampaignManifest.from_dict({
     "name": "parallel_fuel_sweep",
     "parameters": {"RHO": [18.0, 18.5, 19.0, 19.5]},
     "templates": ["deck.inp"],
-    "commands": ["mcnp6 i=deck.inp"],
+    "commands": ["simulation-code --input deck.inp"],
     "execution": {
         "run_dir": "runs",
         "parallel": True,
@@ -410,7 +410,7 @@ Every shell command executed through `Case.launch()` or `LocalExecutionBackend` 
 from labeeb.execution import LocalExecutionBackend, export_execution_events
 
 backend = LocalExecutionBackend()
-result = backend.run("mcnp6 i=deck", cwd=".", timeout=300.0)
+result = backend.run("simulation-code --input deck", cwd=".", timeout=300.0)
 
 event = result.event  # ExecutionEvent
 event.command          # redacted command string
@@ -686,16 +686,16 @@ from labeeb.coupler import Coupler
 from labeeb.case import Case
 from labeeb.database import Database
 
-mcnp = Case(name="mcnp", output_files={})
-mcnp.database = Database(data={"RHO": [1.0]})
+solver_a = Case(name="solver_a", output_files={})
+solver_a.database = Database(data={"RHO": [1.0]})
 
-relap = Case(name="relap", output_files={})
-relap.database = Database(data={"POWER": [20.0], "FLOW": [1200.0]})
+solver_b = Case(name="solver_b", output_files={})
+solver_b.database = Database(data={"POWER": [20.0], "FLOW": [1200.0]})
 
 coupler = Coupler(name="coupled_feedback")
 coupler.database = Database(data={"RHO": [1.0], "POWER": [20.0], "FLOW": [1200.0]})
-coupler.add_case(mcnp, attributes=["RHO"])
-coupler.add_case(relap, attributes=["POWER", "FLOW"])
+coupler.add_case(solver_a, attributes=["RHO"])
+coupler.add_case(solver_b, attributes=["POWER", "FLOW"])
 
 # 1. Typed Under-Relaxation (prevents spatial power oscillations)
 coupler.set_under_relaxation("POWER", factor=0.5)
