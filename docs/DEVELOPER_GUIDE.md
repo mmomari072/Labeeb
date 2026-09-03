@@ -38,6 +38,9 @@ labeeb/
   shared_memory.py SharedMemoryBackend, InMemorySharedBackend, CampaignMemory
   report.py        StatusRegistry + status symbols
   cli.py           thin CLI adapter over Campaign
+  utils/progress.py Timer + ProgressBar: hierarchical indent rendering with
+                   styles default/apt/powershell and a headless (non-TTY)
+                   plain-line fallback; constructor signature preserved
 tests/             pytest suite (see section 7)
 docs/              USER_MANUAL.md (public), this guide, ARCHITECTURE.md
 examples/          runnable case study (case_study_reactor_uncertainty.py)

@@ -93,9 +93,32 @@ def format_seconds(seconds: float) -> str:
 class ProgressBar:
     """
     Console-based progress bar representation.
+
+    Rendering styles: ``default`` (legacy), ``apt``, ``powershell``. When the
+    output stream is not a TTY (or ``headless=True`` is forced), a plain
+    one-line-per-item fallback is used instead of carriage-return redraws.
+    Nested runs (Coupler/Case) pass increasing ``indent`` levels, which render
+    as deeper indentation in every style.
     """
 
-    def __init__(self, name: str, start: int, end: int, step: int = 1, indent: int = 0):
+    STYLES = ("default", "apt", "powershell")
+
+    def __init__(
+        self,
+        name: str,
+        start: int,
+        end: int,
+        step: int = 1,
+        indent: int = 0,
+        *,
+        style: str = "default",
+        headless: Optional[bool] = None,
+        stream: Any = None,
+    ):
+        if style not in self.STYLES:
+            raise ValueError(
+                f"ProgressBar style must be one of {list(self.STYLES)}, got {style!r}"
+            )
         self.name: str = name
         self.start: int = start
         self.end: int = end
@@ -108,6 +131,16 @@ class ProgressBar:
         self._time_remaining: float = 0.0
         self._tmp_len_char: int = -1
         self.indent: int = indent
+        self.style: str = style
+        self._stream: Any = stream if stream is not None else sys.stdout
+        if headless is None:
+            isatty = getattr(self._stream, "isatty", None)
+            self._headless: bool = not (callable(isatty) and isatty())
+        else:
+            self._headless = bool(headless)
+
+    def _indent_prefix(self) -> str:
+        return "    " * self.indent
 
     def _calculate_progress(self) -> None:
         total = self.end - self.start
@@ -146,26 +179,51 @@ class ProgressBar:
             return self._index - 1
 
         self._progress = 1.0
-        self._print_progress()
-        print()  # Final newline
+        if not self._headless:
+            # TTY modes redraw the completed bar; headless already emitted the
+            # final item line on the last tick.
+            self._print_progress()
+            self._finish_line()
         raise StopIteration
 
     def _print_progress(self) -> None:
         len_char = int(self.col_len * self._progress)
-        filled = "=" * len_char
-        empty = " " * (self.col_len - len_char)
         elapsed_str = str(self.timer)
         remaining_str = format_seconds(self._time_remaining)
+        indent_space = self._indent_prefix()
+        pct = 100 * self._progress
 
-        # Only redraw if character representation block changes
-        current_len_char = int(self.col_len * self._progress)
-        if self._tmp_len_char != current_len_char:
-            indent_space = "    " * self.indent
-            sys.stdout.write(
-                f"\r{indent_space}[CASE:{self.name}]({100 * self._progress:6.2f}%)[{filled}{empty}] [Et:{elapsed_str}][Rt:{remaining_str}]"
+        if self._headless:
+            # Plain one-line-per-item fallback (no carriage-return redraws).
+            self._stream.write(f"{indent_space}{self.name}: {self._index}/{self.end}\n")
+            self._stream.flush()
+            return
+
+        if self.style == "default":
+            filled = "=" * len_char
+            empty = " " * (self.col_len - len_char)
+            self._stream.write(
+                f"\r{indent_space}[CASE:{self.name}]({pct:6.2f}%)[{filled}{empty}] [Et:{elapsed_str}][Rt:{remaining_str}]"
             )
-            sys.stdout.flush()
-            # self._tmp_len_char = current_len_char
+            self._stream.flush()
+            return
+        if self.style == "apt":
+            apt_bar = "=" * len_char
+            if len_char < self.col_len:
+                apt_bar += ">" + " " * (self.col_len - len_char - 1)
+            self._stream.write(f"\r{indent_space}{self.name}: {pct:5.1f}% [{apt_bar}]")
+            self._stream.flush()
+            return
+        # powershell
+        filled = "=" * len_char
+        empty = " " * (self.col_len - len_char)
+        self._stream.write(f"\r{indent_space}>> {self.name} >> {pct:6.2f}% [{filled}{empty}]")
+        self._stream.flush()
+
+    def _finish_line(self) -> None:
+        """Final newline after a completed bar (TTY modes only)."""
+        if not self._headless:
+            print()
 
     def update(self, index: int) -> None:
         """
@@ -180,4 +238,4 @@ class ProgressBar:
         self._calculate_progress()
         self._print_progress()
         if self._index >= self.end:
-            print()  # Print a newline when done
+            self._finish_line()
