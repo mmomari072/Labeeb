@@ -1,11 +1,11 @@
 # Labeeb Developer Guide
 
 Companion to `README.md` (user-facing overview), `docs/USER_MANUAL.md` (API
-manual with executable examples), `ARCHITECTURE.md` (design specs), and
-`CONTRIBUTING.md` (setup/PR workflow). This guide is written for developers
-extending Labeeb: it pins down the contracts, extension points, runtime
-lifecycles, persistence and failure semantics, test conventions, compatibility
-rules, and debugging recipes that are easy to get wrong.
+manual with executable examples), `docs/V2_MIGRATION_GUIDE.md` (v2 API contracts & deprecations),
+`ARCHITECTURE.md` (design specs), and `CONTRIBUTING.md` (setup/PR workflow). This guide is
+written for developers extending Labeeb: it pins down the contracts, extension points, runtime
+lifecycles, persistence and failure semantics, test conventions, compatibility rules, and
+debugging recipes that are easy to get wrong.
 
 Version scope: v1.24.0 feature surface, including the current LAB-* release gates.
 

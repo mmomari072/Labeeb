@@ -48,6 +48,8 @@ manifests and routine campaign operations.
 
 > 🛠️ **Developer Guide**: See [docs/DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md) for architecture/API contracts, extension points, lifecycle & events, persistence/failure semantics, test conventions, compatibility rules, and debugging recipes.
 
+> 🔄 **v2.0.0 Migration Guide**: See [docs/V2_MIGRATION_GUIDE.md](docs/V2_MIGRATION_GUIDE.md) for v2 API contracts, deprecations, breaking changes, and step-by-step migration examples from v1.x.
+
 ---
 
 ## 1. Package Architecture

@@ -83,6 +83,11 @@ must wait for a major-version migration.
 The package import is side-effect free by default; the identification banner is
 explicitly enabled with `LABEEB_SHOW_BANNER` or `print_banner()`.
 
+### 2.7 V2 API Architecture & Migration Contract
+* **Public Core Primitives**: `Campaign`, `Case`, `Coupler`, `Database`, `Optimizer`, and `File` define the primary Python-first architecture.
+* **Migration Rules**: Additive features (database-aware derived attributes, safe assignment replacement, correlated sampling, secure subprocess execution) provide explicit v1 compatibility modes during the v1.25 cycle.
+* **Deprecations**: Documented in `docs/V2_MIGRATION_GUIDE.md` with explicit replacement paths.
+
 ### 2.1 Database Subsystem (`labeeb.database`)
 * **Vectorized Column Operations**: The `Attribute` class provides element-wise numerical operations and logical masking.
 * **Storage Agnostic**: `Database` interfaces directly with `pandas.DataFrame` under the hood for serializing to and from CSV, Excel, Parquet, JSON, and Pickle.
