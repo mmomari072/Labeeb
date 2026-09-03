@@ -397,7 +397,7 @@ template.replace_expressions({
 
 
 ### D. Coupling Kernel (`labeeb.coupler`)
-Orchestrate coupled iterations between multiple simulation cases (e.g. thermal-hydraulics and neutronics).
+Orchestrate coupled iterations between multiple simulation cases.
 
 ```python
 from labeeb.case import Case

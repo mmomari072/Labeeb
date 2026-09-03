@@ -8,13 +8,13 @@
 
 ## 1. Introduction & Design Philosophy
 
-**Labeeb** is an API-first Python framework engineered for nuclear engineering, thermal-hydraulics, and general scientific computing workflows. It orchestrates the full lifecycle of numerical simulation experiments:
+**Labeeb** is an API-first Python framework for scientific computing workflows. It orchestrates the full lifecycle of numerical simulation experiments:
 
 1. **Deterministic & Stochastic Sampling**: Generate parameter matrices via grid sweeps, Latin Hypercube Sampling (LHS), Halton low-discrepancy sequences, and probability mass functions.
 2. **Template Processing**: Inject sampled parameters into text-based input decks via delimited token replacement (`FlagsMap`) or dynamic Jinja2 templates (`File.render_jinja()`).
 3. **Execution & Declarative Harvesters**: Launch simulation executables in isolated directories with automatic timeout enforcement, execution event recording, and typed output harvesting (CSV, JSON, Regex, Callable).
 4. **Stateful Campaigns & Reproducibility**: Execute campaigns from validated Python objects or YAML/JSON manifests with input hashing, automatic resume/retry caching, and status tracking.
-5. **Coupling Kernel & Stability Controls**: Coordinate multi-code iterative feedback loops (e.g. neutronics $\leftrightarrow$ thermal-hydraulics) with typed under-relaxation, divergence detection, and iteration failure controls.
+5. **Coupling Kernel & Stability Controls**: Coordinate iterative feedback loops between simulation models with typed under-relaxation, divergence detection, and iteration failure controls.
 6. **Non-Blocking Shared Campaign Memory**: Stream live simulation results to in-memory shared state for real-time online analysis and statistical summaries.
 
 ---
