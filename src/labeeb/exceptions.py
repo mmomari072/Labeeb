@@ -44,3 +44,9 @@ class BackupError(LabeebError):
     """Raised when backup creation, validation, or restore fails."""
 
     pass
+
+
+class OptimizationError(LabeebError):
+    """Raised for invalid optimizer configuration or optimization failures."""
+
+    pass
