@@ -152,6 +152,15 @@ via `set_vars`, or through `execution.command_failure_policy` /
 `harvest_failure_policy` / `max_attempts` in the manifest. Every failure is
 recorded (history, FAILED results, catalog rows) regardless of policy.
 
+Optimization: `Optimizer` proposes candidates inside declared bounds (grid or
+seeded random), evaluates each through a simulation-backed objective, honors
+constraints, records every candidate, and supports budget/stall/wall-time
+termination, atomic JSON checkpoints and resume (see USER_MANUAL §14). Optional
+`labeeb.ai` layers — imported lazily so the core stays lightweight — add a
+scikit-learn `SurrogateModel` (with save/load persistence), scipy and Optuna
+`optimize_*` adapters returning the same `OptimizeResult` shape, and optional
+PyTorch/BoTorch NN surrogate backends.
+
 Designs can also be generated inside the same Python file:
 
 ```python

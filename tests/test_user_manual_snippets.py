@@ -541,3 +541,20 @@ def test_section_7b_campaign_native_live_plot_example_runs_verbatim():
     # verbatim inside the labeeb package context.
     namespace = {"__name__": "__test_manual_example__"}
     exec(compile(example, "<USER_MANUAL campaign live-plot example>", "exec"), namespace)
+
+
+def test_section_14_optimization_runs_verbatim():
+    """Execute the USER_MANUAL section-14 optimizer code block verbatim so the
+    documented optimization/resume example cannot drift from reality."""
+    manual = Path(__file__).resolve().parent.parent / "docs" / "USER_MANUAL.md"
+    text = manual.read_text(encoding="utf-8")
+
+    start = text.index("## 14. Simulation-Based Optimization")
+    end = text.index("## 15. Exception Hierarchy")
+    section = text[start:end]
+    fence = section.index("```python") + len("```python")
+    close = section.index("```", fence)
+    example = section[fence:close].strip()
+
+    namespace = {"__name__": "__test_manual_optimizer_example__"}
+    exec(compile(example, "<USER_MANUAL section 14 optimizer example>", "exec"), namespace)

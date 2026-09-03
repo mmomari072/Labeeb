@@ -963,7 +963,89 @@ if __name__ == "__main__":
 
 ---
 
-## 14. Exception Hierarchy
+## 14. Simulation-Based Optimization & Optional AI Integrations
+
+### Optimization Controller (`labeeb.optimizer`)
+The `Optimizer` proposes candidates inside declared bounds (full-factorial
+`grid` or seeded per-index `random`), evaluates each through your objective
+function — typically one `Case`/`Campaign` simulation — and records every
+candidate (simulated, failed, or constraint-infeasible) into a durable,
+exportable history:
+
+```python
+from tempfile import TemporaryDirectory
+from labeeb import Constraint, Optimizer, export_optimization_history
+
+def run_simulation(candidate):
+    # normally: render a deck, launch a Case, harvest a metric; here a toy:
+    return (candidate["T"] - 550.0) ** 2 + (candidate["flow"] - 8.0) ** 2
+
+with TemporaryDirectory() as tmp:
+    checkpoint = f"{tmp}/opt.json"
+    opt = Optimizer(
+        {"T": (400.0, 700.0), "flow": (0.0, 16.0)},   # search domain
+        run_simulation,                               # one simulation per call
+        direction="minimize",
+        method="grid",                                # or "random" (seed=...)
+        grid_points=5, budget=25,
+        constraints=[Constraint("flow>=1", lambda c: c["flow"] >= 1.0)],
+        checkpoint_path=checkpoint,                   # atomic JSON after each eval
+        patience=9, tolerance=1e-6,                   # optional early stopping
+    )
+    result = opt.run()
+    assert result.best_objective < 1e-6
+    export_optimization_history(result, f"{tmp}/history.csv")
+
+    # resume: skips the already-evaluated candidates and continues
+    resumed = Optimizer(
+        {"T": (400.0, 700.0), "flow": (0.0, 16.0)}, run_simulation,
+        method="grid", grid_points=5, budget=25,
+        checkpoint_path=checkpoint, resume=True,
+    ).run()
+    assert resumed.best_objective == result.best_objective
+```
+
+Semantics: `budget` counts *simulated* evaluations (successes + failures);
+infeasible proposals and resume cache hits are free; `None`/exceptions/NaN
+objectives are recorded as failures and never become the best; maximize via
+`direction="maximize"`.
+
+### Optional AI/ML integrations (`labeeb.ai`)
+`labeeb.ai` layers external engines *without importing them at module load*
+— the core stays lightweight, and missing engines raise
+`OptimizationError` with an install hint:
+
+* `SurrogateModel(["T", "flow"]).fit_from_history(result.history)` — a
+  scikit-learn RandomForest regressor (or `"linear"`, or your own factory)
+  fitted on optimizer history; `predict(candidate)` ranks candidates and
+  `save()`/`SurrogateModel.load()` persists the model (versioned envelope).
+  Requires: `pip install scikit-learn`.
+* `optimize_scipy(objective, variables, method="Nelder-Mead", maxiter=...)`
+  returns the same `OptimizeResult` shape as the core optimizer
+  (direction-aware, failures recorded). Requires: `pip install scipy`.
+* `optimize_optuna(objective, variables, n_trials=50, seed=42)` — seeded TPE
+  study adapter with the same result shape. Requires: `pip install optuna`.
+* `NeuralMLPSurrogate(var_names)` — optional PyTorch MLP surrogate
+  (seeded, `fit_from_history`/`predict`/`save`/`load`).
+  Requires: `pip install torch`.
+* `BoTorchGPSurrogate(var_names)` — optional BoTorch single-task GP
+  surrogate. Requires: `pip install botorch`.
+
+```python
+# scikit-learn only: fit a surrogate on a finished optimization, then predict
+from labeeb import Optimizer, SurrogateModel
+toy = Optimizer({"T": (400.0, 700.0), "flow": (0.0, 15.0)},
+                lambda c: 0.0, budget=2).run()
+model = SurrogateModel(["T", "flow"], backend="rf", seed=1)
+model.fit_from_history(toy.history)
+model.save("/tmp/my_surrogate.pkl")
+assert model.predict({"T": 550.0, "flow": 8.0}) < 1.0
+```
+
+Reproducibility is explicit: every stochastic engine accepts a `seed`, RF
+uses `random_state=seed`/`n_jobs=1`, and Optuna's sampler is seeded.
+
+## 15. Exception Hierarchy
 
 All domain exceptions inherit from `LabeebError`:
 
