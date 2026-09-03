@@ -35,7 +35,7 @@ secret redaction, JSON logging, and concurrent-safe JSONL appends.
 | **v1.22.0** | Shareable campaign memory and live online analysis | Redacted bundle export, provider-neutral sharing, opt-in consent, non-blocking live figures, integrity and privacy tests | Released |
 | **v1.24.0** | Optional integration dependencies | Excel/Parquet/plot extras, clear missing-engine guidance, focused and full suite green, committed and pushed | Release candidate |
 | **v1.23.0** | Coupling reliability, nested progress, and secure execution | Coupling restart tests, progress-style compatibility tests, safe argv execution, full suite green, committed and pushed | Released |
-| **v2.0.0** | Stable Python-first campaign, data, execution, and optimization contract | Derived attributes, expression templating, versioned result schemas, production backends, complete sampling/optimization APIs, migration guide, clean-install/Python matrix, independent QA, tagged release | Planned |
+| **v2.0.0** | Stable Python-first campaign, data, execution, and optimization contract | Derived attributes, expression templating, versioned result schemas, production backends, complete sampling/optimization APIs, migration guide, clean-install/Python matrix, independent QA, tagged release | Released (`eabfeef`, `v2.0.0`) |
 
 ### v2.0.0 execution roadmap
 
@@ -49,7 +49,7 @@ The v2 plan and specification are maintained in
 - [ ] **V2-EXEC-01** — Versioned execution/result contracts and production backends; dependency: V2-DOC-01.
 - [ ] **V2-UQ-01** — Complete OAT/correlated/bounded sampling and benchmark validation; dependency: V2-DB-01.
 - [ ] **V2-OPT-01** — First-class Campaign optimization integration and optional AI backends; dependency: V2-EXEC-01 and V2-UQ-01.
-- [ ] **V2-REL-01** — Python matrix, clean install, API snapshots, case studies, independent QA, and v2 release; dependency: all prior tasks.
+- [x] **V2-REL-01** — Python matrix, clean install, API snapshots, case studies, independent QA, and v2 release; dependency: all prior tasks. Landed in `eabfeef`, tagged `v2.0.0`; independent post-release QA remains tracked separately.
 
 ### PF-010 — Shareable campaign memory for online analysis
 
