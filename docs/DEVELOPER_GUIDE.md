@@ -173,6 +173,18 @@ raising `TypeError` *inside* their body are re-invoked by the signature
 dispatcher up to 3 times and the surfaced error can be misleading — keep
 callback bodies free of data-driven TypeErrors.
 
+### 3.6 Post-output hooks (`Case.add_post_output_hook`)
+
+Hooks run between `_read_outputs()` and `post_functions` (after harvest,
+before result finalization), in registration order, with `(outputs, case)` —
+mutations honored, dict returns appended as new metric rows (auto-flowing
+into catalog metrics via per-key deltas). Validation: callable + unique names
++ dict-or-None return. Hook exceptions follow `harvest_failure_policy`
+(stop -> CaseExecutionError; continue -> recorded on
+`case.post_output_hook_failures`, outputs kept, remaining hooks run).
+Parallel workers each run their own copy; hook-created columns are union-merged
+in `case_id` order.
+
 ---
 
 ## 4. Lifecycle, Events & Timing

@@ -323,6 +323,45 @@ print(f"Sweep complete: {len(successes)} succeeded, {len(failures)} failed.")
 - **`OutputCatalog`**: Appends **one row per attempt** (attempt 0, 1, 2, ...). When `command_failure_policy="retry"`, every failed attempt is recorded as a distinct catalog row with its command, exit code, stdout/stderr path, and duration — providing a complete append-only audit trail.
 - **All Recorded Failures**: Always remain visible in `case.execution_history` (status, exit code, message), `Campaign` results (`status="FAILED"`, `failure=...`), `OutputCatalog` rows, and `case_failure` lifecycle events.
 
+#### Post-Output Hooks
+Hooks run *after* output files/harvesters are read and *before* results are
+finalized (between `_read_outputs()` and `post_functions`), in registration
+order:
+
+```python
+def ratio_hook(outputs, case):
+    # CSV column rows hold [row_value]; harvester/derived metrics are scalars
+    return {"ratio": outputs["x"][-1][0] / outputs["y"][-1][0]}
+
+case.add_post_output_hook("ratio", ratio_hook)   # or: add_post_output_hook(fn)
+
+def clamp_keff_hook(outputs, case):
+    outputs["keff"][-1] = min(outputs["keff"][-1][0], 0.99)  # in-place edit
+
+case.add_post_output_hook("clamp_keff", clamp_keff_hook)
+```
+
+Contract:
+
+* Signature `hook(outputs, case)`: `outputs` is the live `case.outputs`
+  mapping (in-place edits honored); `case` carries `case_id`,
+  `current_case_dir`, `execution_history`, and the database row.
+* **Return semantics**: `None` = no additions (mutations only); a dict
+  `{metric: value}` appends one row entry per key (new columns are created).
+  Returned metrics flow into `Campaign` results and — via per-key output
+  deltas — into `OutputCatalog` rows automatically.
+* **Validation**: hooks must be callable, names unique, and returns must be
+  `None` or a dict; violations raise `CaseExecutionError`.
+* **Failure policy**: exceptions raised *inside* a hook follow
+  `harvest_failure_policy` — `stop` (default) fails the case with
+  `CaseExecutionError`; `continue` records the failure on
+  `case.post_output_hook_failures` (per attempt, readable after the run),
+  keeps the harvested outputs, and runs the remaining hooks without failing
+  the case.
+* **Parallel safety**: each parallel worker runs its own hook invocation on
+  its own row (hooks must not share mutable state across calls); hook-created
+  columns merge back in `case_id` order like regular outputs.
+
 ### Structured Execution Logging & Redaction
 Every shell command executed through `Case.launch()` or `LocalExecutionBackend` produces an auditable `ExecutionEvent` record and, when JSON logging is enabled, a structured log line. Events are also recorded per case in `case.execution_history` and can be exported:
 

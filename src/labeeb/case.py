@@ -6,7 +6,7 @@ input processing, simulation runs, and parsing outputs.
 import logging
 import os
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import pandas as pd
 
@@ -200,6 +200,11 @@ class Case(CoupledUnit):
         self.run_type: str = "read_only"
         self.case_id: int = 0
 
+        # Post-output hooks: (name, callable) pairs run after outputs/harvesters
+        # are read and before results are finalized (LAB-POST-OUTPUT-HOOKS-01).
+        self.post_output_hooks: List[Tuple[str, Callable[..., Any]]] = []
+        self.post_output_hook_failures: List[str] = []
+
         # Output specifications
         self.output_files: Dict[str, List[str]] = (
             output_files if output_files is not None else {"omari.csv": ["Time", "Pu239"]}
@@ -387,6 +392,7 @@ class Case(CoupledUnit):
         self._attempt = attempt
         self._case_failed = False
         self.failure = None
+        self.post_output_hook_failures = []
         dir_name = (
             f"{self.run_case_sub_dir}_{idx}"
             if not attempt
@@ -441,6 +447,10 @@ class Case(CoupledUnit):
 
         # Parse outputs
         self._read_outputs()
+
+        # Post-output hooks: enrichment/derivation after outputs are read,
+        # before results are finalized (runs before post_functions).
+        self._run_post_output_hooks()
 
         for f in self.post_functions:
             f(self, **kwargs)
@@ -559,8 +569,9 @@ class Case(CoupledUnit):
                 if res:
                     outputs, exec_hist = res
                     for key, val_list in outputs.items():
-                        if key in self.outputs:
-                            self.outputs[key].extend(val_list)
+                        if key not in self.outputs:
+                            self.outputs[key] = []
+                        self.outputs[key].extend(val_list)
                     self.execution_history.extend(exec_hist)
 
                     if any(entry.get("status") in {"FAILED", "TIMEOUT"} for entry in exec_hist):
@@ -809,6 +820,101 @@ class Case(CoupledUnit):
                 self.main_dir = val
             else:
                 logger.warning(f"Case setup parameter '{key}' is not supported")
+
+    def add_post_output_hook(self, name: str, fn: Optional[Callable[..., Any]] = None) -> "Case":
+        """Register a post-output hook.
+
+        ``name`` is a unique label (used in error messages and failure
+        records). When called with a single callable argument, its
+        ``__name__`` is used as the label.
+
+        The hook runs after output files/harvesters have been read and before
+        results are finalized — i.e. between ``_read_outputs()`` and
+        ``post_functions`` in ``launch_case``. Contract:
+
+        * ``hook(outputs, case)`` receives the live ``case.outputs`` mapping
+          (per-column row lists; mutations are honored) and the ``Case``
+          itself (``case.case_id``, ``case.current_case_dir``,
+          ``case.execution_history``, ...).
+        * Returning a dict ``{metric: value}`` appends one row entry to each
+          named output column (creating the column if new) — synthesized
+          metrics then flow into results and, when configured, per-attempt
+          catalog rows (the catalog records per-key output deltas).
+        * Returning ``None`` contributes nothing beyond any in-place
+          mutations.
+        * A return that is neither ``None`` nor a dict is a contract
+          violation and raises ``CaseExecutionError``. Exceptions raised
+          *inside* a hook follow ``harvest_failure_policy``: ``stop``
+          (default) fails the case with ``CaseExecutionError``; ``continue``
+          records the failure on ``case.post_output_hook_failures``, keeps the
+          outputs, and proceeds with the remaining hooks.
+        """
+        if fn is None:
+            fn = name  # type: ignore[assignment]
+            name = getattr(fn, "__name__", "hook")
+        if not callable(fn):
+            raise CaseExecutionError(
+                f"post-output hook {name!r} must be callable(outputs, case)"
+            )
+        existing = {hook_name for hook_name, _ in self.post_output_hooks}
+        if name in existing:
+            raise CaseExecutionError(
+                f"post-output hook name {name!r} is already registered (names must be unique)"
+            )
+        self.post_output_hooks.append((str(name), fn))
+        return self
+
+    def _validate_post_output_hooks(self) -> None:
+        seen: List[str] = []
+        normalized: List[Tuple[str, Callable[..., Any]]] = []
+        for item in self.post_output_hooks:
+            name: str
+            fn: Callable[..., Any]
+            if isinstance(item, tuple) and len(item) == 2:
+                name, fn = item  # type: ignore[misc]
+            else:
+                fn = item  # type: ignore[assignment]
+                name = getattr(fn, "__name__", "hook")
+            if not isinstance(name, str) or not name:
+                raise CaseExecutionError(
+                    "post-output hook entries must carry a non-empty string name"
+                )
+            if not callable(fn):
+                raise CaseExecutionError(
+                    f"post-output hook {name!r} must be callable(outputs, case), got {type(fn).__name__}"
+                )
+            if name in seen:
+                raise CaseExecutionError(
+                    f"post-output hook name {name!r} is registered more than once (names must be unique)"
+                )
+            seen.append(name)
+            normalized.append((name, fn))
+        self.post_output_hooks = normalized
+
+    def _run_post_output_hooks(self) -> None:
+        """Run registered post-output hooks (see add_post_output_hook)."""
+        self._validate_post_output_hooks()
+        for name, fn in self.post_output_hooks:
+            try:
+                extra = fn(self.outputs, self)
+            except Exception as exc:  # noqa: BLE001 - governed by harvest_failure_policy
+                if getattr(self, "harvest_failure_policy", "stop") == "continue":
+                    message = f"{name}: {type(exc).__name__}: {exc}"
+                    self.post_output_hook_failures.append(message)
+                    logger.warning(f"Post-output hook {message} (continue policy)")
+                    continue
+                raise CaseExecutionError(
+                    f"Post-output hook {name!r} failed for case {self.case_id}: {exc}"
+                ) from exc
+            if extra is None:
+                continue
+            if not isinstance(extra, dict):
+                raise CaseExecutionError(
+                    f"Post-output hook {name!r} must return None or a dict of {{metric: value}}, "
+                    f"got {type(extra).__name__}"
+                )
+            for metric, value in extra.items():
+                self.outputs.setdefault(metric, []).append(value)
 
     def set_vars(self, **kwargs: Any) -> "Case":
         """Set execution parameters dynamically."""
