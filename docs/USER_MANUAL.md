@@ -1292,6 +1292,24 @@ objectives are recorded as failures and never become the best; maximize via
 — the core stays lightweight, and missing engines raise
 `OptimizationError` with an install hint:
 
+These integrations are optional and are not required for normal campaign,
+sampling, or database workflows. Install only the engine needed by your case
+study:
+
+```bash
+python -m pip install scikit-learn   # Random Forest or linear surrogate
+python -m pip install scipy          # scipy.optimize adapter
+python -m pip install optuna         # Optuna study adapter
+python -m pip install torch          # NeuralMLPSurrogate
+python -m pip install botorch        # BoTorchGPSurrogate (also needs torch)
+```
+
+AI models do not execute simulations themselves. Run a `Campaign` or
+`Optimizer`, fit a model from successful evaluation history, rank candidates,
+and send selected candidates through the next simulation round. Failed,
+infeasible, and unevaluated records remain visible in the original history
+but are excluded from surrogate fitting.
+
 * `SurrogateModel(["T", "flow"]).fit_from_history(result.history)` — a
   scikit-learn RandomForest regressor (or `"linear"`, or your own factory)
   fitted on optimizer history; `predict(candidate)` ranks candidates and
@@ -1337,6 +1355,29 @@ assert model.predict({"T": 550.0, "flow": 8.0}) < 1.0
 
 Reproducibility is explicit: every stochastic engine accepts a `seed`, RF
 uses `random_state=seed`/`n_jobs=1`, and Optuna's sampler is seeded.
+
+### Neural-network workflow
+
+Use the PyTorch MLP when a differentiable nonlinear surrogate is useful. It
+uses normalized inputs and the same history/predict/save/load pattern as the
+scikit-learn surrogate:
+
+```python
+from labeeb import NeuralMLPSurrogate, rank_candidates
+
+nn = NeuralMLPSurrogate(["T", "flow"], seed=42, epochs=300)
+nn.fit_from_history(result.history)
+ranked = rank_candidates(
+    nn, {"T": (400.0, 700.0), "flow": (0.0, 15.0)}, n=50, seed=42,
+)
+print(ranked[:3])
+nn.save("models/temperature-flow-mlp.pkl")
+restored = NeuralMLPSurrogate.load("models/temperature-flow-mlp.pkl")
+```
+
+Treat surrogate predictions as proposals, not validated simulation results:
+run selected candidates through the real objective and refit after adding new
+evaluations.
 
 ## 15. Exception Hierarchy
 

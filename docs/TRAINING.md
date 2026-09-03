@@ -15,6 +15,7 @@ By completing this curriculum, you will:
 - ✓ Quantify uncertainty (LHS, Halton sampling, tolerance limits)
 - ✓ Couple multi-physics codes with convergence controls
 - ✓ Build reproducible analysis bundles with provenance tracking
+- ✓ Use optional AI/ML surrogates and neural networks to guide simulations
 
 ---
 
@@ -32,7 +33,7 @@ By completing this curriculum, you will:
 | **7** | Multi-Physics Coupling | 2 h | Module 3 | Coupler, convergence contract, under-relaxation |
 | **8** | Analysis Bundles | 1 h | Module 4 | Export/load, redaction, reproducibility, provenance |
 | **9** | Live Plotting | 1 h | Module 4 | LivePlot, EventPublisher, non-blocking observers |
-| **10** | Advanced Topics | Variable | All | Optimization, custom backends, failure policies |
+| **10** | Advanced Topics | Variable | All | Optimization, AI/ML surrogates, custom backends, failure policies |
 | **Capstone** | End-to-end study | 4 h | All | Multi-parameter campaign, SA/UA, bundle export |
 | | **Total** | **~20 hours** | | |
 
@@ -811,11 +812,36 @@ results = campaign.run()
 
 ## Module 10: Advanced Topics (Optional, Variable Time)
 
-### 10a. Optimization & Surrogate Models
-- `Optimizer`: simulation-based optimization with checkpoint/resume
-- `SurrogateModel`: GP, neural network, or Gaussian process surrogates
-- `rank_candidates()`: find next points using acquisition functions (EI, LCB)
-- Reference: [USER_MANUAL § 11: Optimization](./USER_MANUAL.md#11-simulation-based-optimization)
+### 10a. Optimization & AI/ML Surrogate Models
+- `Optimizer` and `Campaign.optimize()`: simulation-based optimization with checkpoint/resume
+- `SurrogateModel`: scikit-learn Random Forest or linear regression surrogate
+- `NeuralMLPSurrogate`: optional seeded PyTorch multi-layer perceptron
+- `BoTorchGPSurrogate`: optional Gaussian-process surrogate
+- `optimize_scipy()` and `optimize_optuna()`: optional optimizer adapters
+- `rank_candidates()`: deterministic candidate scoring for surrogate-guided search
+- Install only what is needed: `python -m pip install scikit-learn scipy optuna torch botorch`
+- Reference: [USER_MANUAL § 14: Optimization and AI](./USER_MANUAL.md#14-simulation-based-optimization--optional-ai-integrations)
+
+**Exercise 10.1**: Fit a neural surrogate and select candidates
+
+```python
+from labeeb import NeuralMLPSurrogate, rank_candidates
+
+model = NeuralMLPSurrogate(["POWER", "FLOW"], seed=7, epochs=300)
+model.fit_from_history(result.history)  # successful evaluations only
+proposals = rank_candidates(
+    model,
+    {"POWER": (10.0, 50.0), "FLOW": (100.0, 300.0)},
+    n=100,
+    seed=7,
+)
+print(proposals[:5])
+```
+
+Predictions are candidate proposals, not validated results. Execute selected
+points with the real `Case`/`Campaign` objective, retain the new history, and
+refit before another search round. Optional engines are lazy-loaded; without
+their package, Labeeb raises `OptimizationError` with an install hint.
 
 ### 10b. Custom Execution Backends
 - Implement `ExecutionBackend` interface for HPC, cloud, or custom schedulers
