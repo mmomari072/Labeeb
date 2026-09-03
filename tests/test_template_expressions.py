@@ -319,3 +319,37 @@ def test_case_integration_with_assignments_and_expressions():
             content_1 = f.read()
         assert "rho = 19.20 $ base density" in content_1
         assert "power_watts = 2.00e+07" in content_1
+
+
+def test_replace_assignment_contract():
+    f = File()
+    f._db = [
+        "x=1",
+        "  x = 2.5e-04  $ first comment",
+        "x = 3.0",
+        "other_x = 99",
+    ]
+
+    # Replace all occurrences (default)
+    rendered = f.replace_assignment("x", 42)
+    assert "x=42" in rendered
+    assert "x = 42" in rendered
+    assert "other_x = 99" in rendered
+
+    # Replace specific 1-based occurrence index
+    f2 = File()
+    f2._db = ["x = 10", "x = 20", "x = 30"]
+    rendered2 = f2.replace_assignment("x", 99, occurrence=2)
+    assert f2[0] == "x = 10"
+    assert f2[1] == "x = 99"
+    assert f2[2] == "x = 30"
+
+    # Occurrence out of bounds raises TemplateError
+    with pytest.raises(TemplateError, match="occurrence 5 not found"):
+        f2.replace_assignment("x", 100, occurrence=5)
+
+    # Invalid key or occurrence spec raises TemplateError
+    with pytest.raises(TemplateError, match="non-empty string"):
+        f2.replace_assignment("", 10)
+    with pytest.raises(TemplateError, match="Invalid occurrence"):
+        f2.replace_assignment("x", 10, occurrence="invalid")  # type: ignore[arg-type]

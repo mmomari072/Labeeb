@@ -491,6 +491,68 @@ class File:
                 self._replaced[line_id] = self._replaced[line_id].replace(word, str_val)
         return self
 
+    def replace_assignment(
+        self,
+        key: str,
+        value: Any,
+        *,
+        occurrence: Union[int, str] = "all",
+        preserve_format: bool = True,
+    ) -> str:
+        """Replace only assignment values for key (e.g., x=1, x = 1, x = 1.23e-4).
+
+        Preserves whitespace, separators, comments, and line structure without arbitrary code execution.
+
+        Args:
+            key: Assignment key name to match (e.g. ``"x"``).
+            value: Replacement value (scalar, string, or callable).
+            occurrence: 1-based occurrence index, or ``"all"`` (default).
+            preserve_format: If True, format float/numeric replacements cleanly.
+
+        Returns:
+            The complete rendered text string after replacement.
+
+        Raises:
+            TemplateError: If key is invalid or occurrence is out of bounds / unrecognized.
+        """
+        if not isinstance(key, str) or not key.strip():
+            raise TemplateError("Assignment key must be a non-empty string")
+        if isinstance(occurrence, int) and occurrence < 1:
+            raise TemplateError("Occurrence index must be >= 1")
+        if isinstance(occurrence, str) and occurrence != "all":
+            raise TemplateError(f"Invalid occurrence specification: {occurrence!r}")
+
+        lines = deepcopy(self._replaced) if self._replaced else deepcopy(self._db)
+        formatted_val = format_value(value, None) if preserve_format else str(value)
+
+        pattern = re.compile(
+            rf"(?<![A-Za-z0-9_.-])({re.escape(key.strip())}(?![A-Za-z0-9_])\s*=\s*)"
+            r"([^\s,;!#$/]+)"
+        )
+
+        matches_found = 0
+        new_lines: List[str] = []
+        for line in lines:
+            code_part, comment_part = _split_line_comment(line)
+
+            def _repl(match: re.Match) -> str:
+                nonlocal matches_found
+                matches_found += 1
+                if occurrence == "all" or matches_found == occurrence:
+                    return match.group(1) + formatted_val
+                return match.group(0)
+
+            new_code = pattern.sub(_repl, code_part)
+            new_lines.append(new_code + comment_part)
+
+        if isinstance(occurrence, int) and matches_found < occurrence:
+            raise TemplateError(
+                f"Assignment key {key!r} occurrence {occurrence} not found (found {matches_found})"
+            )
+
+        self._replaced = new_lines
+        return "\n".join(new_lines)
+
     def replace_assignments(
         self,
         values: Dict[str, Any],
