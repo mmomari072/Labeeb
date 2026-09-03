@@ -1,1 +1,1 @@
-agent.md
+artifacts/project-coordination/agent.md
