@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "labeeb"
-version = "1.24.0"
+version = "2.0.0"
 authors = [
     { name = "Mohammed Omari", email = "mmomari072@gmail.com" }
 ]
@@ -56,3 +56,6 @@ labeeb = "labeeb.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+labeeb = ["py.typed"]

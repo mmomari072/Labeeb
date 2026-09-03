@@ -44,7 +44,7 @@ manifests and routine campaign operations.
 - Records execution events, command logs, artifacts, retries, and output-catalog entries when enabled.
 - Keeps optional AI and optimization integrations separate from the lightweight core.
 
-> 📖 **Comprehensive Guide**: See the complete [v1.24.0 User Manual & API Guide](docs/USER_MANUAL.md) for in-depth examples covering declarative harvesters, coupling stability controls, secure execution, optional integrations, and non-blocking shared campaign memory.
+> 📖 **Comprehensive Guide**: See the complete [v2.0.0 User Manual & API Guide](docs/USER_MANUAL.md) for in-depth examples covering declarative harvesters, coupling stability controls, secure execution, optional integrations, and non-blocking shared campaign memory.
 
 > 🛠️ **Developer Guide**: See [docs/DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md) for architecture/API contracts, extension points, lifecycle & events, persistence/failure semantics, test conventions, compatibility rules, and debugging recipes.
 
