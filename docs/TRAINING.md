@@ -1,4 +1,4 @@
-# Labeeb API-First Training Curriculum (v1.21.0)
+# Labeeb API-First Training Curriculum (v1.22.0)
 
 > **Goal**: Master sensitivity analysis (SA) and uncertainty analysis (UA) workflows using the Labeeb Python API.  
 > **Audience**: Python developers, simulation engineers, researchers  
@@ -56,7 +56,7 @@ cd /path/to/Labeeb
 python -m pip install -e .[dev]
 
 # Verify installation
-python -c "import labeeb; print(labeeb.__version__)"  # v1.21.0
+python -c "import labeeb; print(labeeb.__version__)"  # v1.22.0
 ```
 
 **Exercise 0.1**: First Script

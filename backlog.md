@@ -32,35 +32,39 @@ failure events, retry-attempt correlation, optional stdout/stderr artifacts,
 secret redaction, JSON logging, and concurrent-safe JSONL appends.
 
 | **v1.5.0** | Comprehensive API observability and execution audit trail | Full suite green, redaction/lifecycle/retry/artifact/concurrency coverage, committed and pushed | Released |
-| **v1.6.0** | Shareable campaign memory and live online analysis | Redacted bundle export, provider-neutral sharing, opt-in consent, non-blocking live figures, integrity and privacy tests | Planned |
+| **v1.22.0** | Shareable campaign memory and live online analysis | Redacted bundle export, provider-neutral sharing, opt-in consent, non-blocking live figures, integrity and privacy tests | Release candidate |
 
 ### PF-010 — Shareable campaign memory for online analysis
 
-- [ ] Add an API-first `MemoryShare`/campaign bundle export containing the
+- [x] Add an API-first `MemoryShare`/campaign bundle export containing the
   manifest, provenance, parameters, case results, execution events, and opted-in
   logs/artifacts.
-- [ ] Redact secrets by default and require explicit opt-in before any network
+- [x] Redact secrets by default and require explicit opt-in before any network
   operation; preserve a local JSON/ZIP export that needs no provider.
-- [ ] Define a provider-neutral `share()` interface so online analysis services
+- [x] Define a provider-neutral `share()` interface so online analysis services
   can be added without coupling the core package to one vendor.
-- [ ] Add integrity metadata, privacy tests, and a case-study example showing
+- [x] Add integrity metadata, privacy tests, and a case-study example showing
   how an exported bundle can be consumed by an online analysis workflow.
 
 ### PF-011 — Non-blocking live variable plots
 
-- [ ] Provide an API-first observer/stream for selected variables and derived
+- [x] Provide an API-first observer/stream for selected variables and derived
   metrics while a campaign is executing.
-- [ ] Update online figures incrementally as results arrive without changing
+- [x] Update online figures incrementally as results arrive without changing
   simulation inputs, convergence decisions, scheduling, or failure handling.
-- [ ] Isolate plotting and network work from the execution path so a slow or
+- [x] Isolate plotting and network work from the execution path so a slow or
   unavailable analysis client cannot pause or fail the campaign.
-- [ ] Support headless execution, bounded buffering, redacted data sharing, and
+- [x] Support headless execution, bounded buffering, redacted data sharing, and
   tests proving execution results are identical with plotting enabled or off.
-- [ ] Define a provider-neutral `EventPublisher` API: implement durable JSONL
+- [x] Define a provider-neutral `EventPublisher` API: implement durable JSONL
   publishing first, then optional WebSocket delivery for browser dashboards and
   Redis Streams for distributed/replayable consumers.
-- [ ] Treat raw sockets as an internal transport only if needed; do not use
+- [x] Treat raw sockets as an internal transport only if needed; do not use
   Memcached as the event channel because it is volatile and not replayable.
+
+Acceptance evidence: focused online-analysis tests pass (52), the full suite
+passes (358 passed, 11 skipped), and execution invariance was checked with
+memory, JSONL publishing, and disabled live plotting.
 
 ---
 
