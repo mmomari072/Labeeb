@@ -7,7 +7,7 @@ extending Labeeb: it pins down the contracts, extension points, runtime
 lifecycles, persistence and failure semantics, test conventions, compatibility
 rules, and debugging recipes that are easy to get wrong.
 
-Version scope: v1.20.6 feature surface, including the current LAB-* release gates.
+Version scope: v1.20.7 feature surface, including the current LAB-* release gates.
 
 ---
 
