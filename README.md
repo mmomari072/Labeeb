@@ -5,6 +5,45 @@
 
 **Labeeb** is a professional, general-purpose Python API package for conducting sensitivity analyses, uncertainty studies, and parameter sweeps on any simulation code that relies on text files as input decks.
 
+## What does “Labeeb” mean?
+
+`Labeeb` (لبيب, pronounced approximately *la-beeb*) is an Arabic word meaning
+intelligent, discerning, or wise. The name reflects the package’s purpose:
+helping a computational study turn many simulation runs into organized,
+traceable, and interpretable evidence. Labeeb does not replace the simulator;
+it provides the reusable Python layer around the simulator so that inputs,
+execution, outputs, analysis, and provenance can be handled consistently.
+
+## Why use Labeeb?
+
+Simulation studies often repeat the same fragile sequence: edit an input file,
+create a run directory, launch an external command, parse its output, and copy
+the result into a spreadsheet. Labeeb makes that sequence an API-driven
+workflow. A typical study is built from these pieces:
+
+| Concept | Responsibility |
+| --- | --- |
+| `Database` / `Attribute` | Store typed parameters, results, and derived values |
+| Samplers and designs | Create factorial, OAT, LHS, Halton, or distribution-based inputs |
+| `Case` | Render one input set, execute the external program, and harvest outputs |
+| `Campaign` | Run many cases with state, retry, resume, and provenance support |
+| `Coupler` | Coordinate iterative workflows between multiple cases |
+| Analysis and reports | Quantify sensitivity, uncertainty, convergence, and results |
+
+The primary interface is Python, which makes case studies reproducible and
+testable. The command-line interface is a thin convenience layer for validated
+manifests and routine campaign operations.
+
+## At a glance
+
+- Works with external programs that consume text or tabular input files.
+- Supports deterministic sweeps as well as seeded stochastic sampling.
+- Keeps successful and failed case results aligned and queryable.
+- Provides flags, assignment replacement, Jinja2, and inline expressions for templates.
+- Supports output harvesters, Excel/CSV/JSON/Parquet exchange, and derived attributes.
+- Records execution events, command logs, artifacts, retries, and output-catalog entries when enabled.
+- Keeps optional AI and optimization integrations separate from the lightweight core.
+
 > 📖 **Comprehensive Guide**: See the complete [v1.20.7 User Manual & API Guide](docs/USER_MANUAL.md) for in-depth examples covering declarative harvesters, coupling stability controls, and non-blocking shared campaign memory.
 
 > 🛠️ **Developer Guide**: See [docs/DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md) for architecture/API contracts, extension points, lifecycle & events, persistence/failure semantics, test conventions, compatibility rules, and debugging recipes.
