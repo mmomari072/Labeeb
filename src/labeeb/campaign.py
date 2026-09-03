@@ -240,7 +240,105 @@ class Campaign:
             redact_keys=redact_keys,
         )
 
+    def optimize(
+        self,
+        objective_metric: str,
+        direction: str = "minimize",
+        method: str = "grid",
+        *,
+        variables: Optional[Dict[str, Tuple[float, float]]] = None,
+        budget: int = 50,
+        grid_points: Optional[int] = None,
+        seed: int = 42,
+        constraints: Sequence[Any] = (),
+        checkpoint_path: Optional[Union[str, Path]] = None,
+        resume: bool = False,
+        patience: Optional[int] = None,
+        tolerance: float = 1e-9,
+        time_budget_seconds: Optional[float] = None,
+    ) -> Any:
+        """Run campaign-driven optimization over parameter bounds or discrete manifest ranges.
+
+        Proposes parameter combinations, evaluates each candidate by building and launching
+        a single-row Case for this campaign, harvests ``objective_metric`` from case outputs,
+        enforces optional constraints before simulation, and records checkpoints.
+
+        Args:
+            objective_metric: Name of output column/metric to evaluate and optimize.
+            direction: ``"minimize"`` (default) or ``"maximize"``.
+            method: ``"grid"`` (default) or ``"random"``.
+            variables: Dict mapping parameter names to ``(low, high)`` bounds. If omitted,
+                bounds are automatically inferred from ``manifest.parameters`` numeric ranges.
+            budget: Maximum number of simulated candidate evaluations.
+            grid_points: Grid divisions per variable for ``"grid"`` method.
+            seed: Random seed for ``"random"`` proposals.
+            constraints: Optional sequence of :class:`~labeeb.optimizer.Constraint` filters.
+            checkpoint_path: Optional path for writing atomic JSON optimization checkpoints.
+            resume: If True and ``checkpoint_path`` exists, resume optimization state.
+            patience: Optional number of evaluations without improvement before early stop.
+            tolerance: Minimum objective improvement required for patience tracking.
+            time_budget_seconds: Optional wall-clock evaluation limit in seconds.
+
+        Returns:
+            :class:`~labeeb.optimizer.OptimizeResult` containing best candidate, best objective,
+            and evaluation history.
+        """
+        from .optimizer import Optimizer
+
+        if variables is None:
+            inferred: Dict[str, Tuple[float, float]] = {}
+            for name, vals in self.manifest.parameters.items():
+                numeric = [float(v) for v in vals if isinstance(v, (int, float))]
+                if numeric:
+                    inferred[name] = (min(numeric), max(numeric))
+            if not inferred:
+                raise CampaignError("Cannot infer numeric variable bounds from campaign parameters")
+            variables = inferred
+
+        def _objective_fn(candidate: Dict[str, float]) -> Optional[float]:
+            case = self.build_case()
+            from .database import Database
+
+            case.database = Database(data={k: [v] for k, v in candidate.items()})
+            case.output_files = {
+                k: v for k, v in case.output_files.items()
+            }
+            if not case.output_files and not case.harvesters:
+                case.output_files = {"data.csv": [objective_metric]}
+            case.outputs = {col: [] for col in case.output_files.get("data.csv", [objective_metric])}
+            case.case_id = 0
+            try:
+                case.launch_case(0)
+                if getattr(case, "_case_failed", False):
+                    return None
+                val = case.outputs.get(objective_metric)
+                if not val:
+                    return None
+                metric_val = val[0][0] if isinstance(val[0], list) else val[0]
+                return float(metric_val) if metric_val is not None else None
+            except Exception as exc:
+                logger.warning("Campaign optimization candidate evaluation failed: %s", exc)
+                return None
+
+        optimizer = Optimizer(
+            variables=variables,
+            objective_fn=_objective_fn,
+            direction=direction,
+            method=method,
+            constraints=constraints,
+            budget=budget,
+            grid_points=grid_points,
+            seed=seed,
+            patience=patience,
+            tolerance=tolerance,
+            checkpoint_path=str(checkpoint_path) if checkpoint_path is not None else None,
+            resume=resume,
+            time_budget_seconds=time_budget_seconds,
+        )
+        return optimizer.run()
+
     def build_case(self) -> "Case":
+
         """Build a configured :class:`Case` for this campaign."""
         from .case import Case
         from .database import Database

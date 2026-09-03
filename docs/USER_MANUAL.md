@@ -1251,10 +1251,35 @@ with TemporaryDirectory() as tmp:
     # resume: skips the already-evaluated candidates and continues
     resumed = Optimizer(
         {"T": (400.0, 700.0), "flow": (0.0, 16.0)}, run_simulation,
-        method="grid", grid_points=5, budget=25,
+        direction="minimize", method="grid", grid_points=5, budget=25,
         checkpoint_path=checkpoint, resume=True,
-    ).run()
-    assert resumed.best_objective == result.best_objective
+    )
+    res_2 = resumed.run()
+    assert res_2.cached > 0
+```
+
+### First-Class Campaign Optimization (`Campaign.optimize`)
+A `Campaign` can directly optimize simulation parameters over manifest ranges or variable bounds by building and launching single-row cases, harvesting the target objective metric, applying feasibility constraints, and saving checkpoints:
+
+```python
+from labeeb import Campaign, CampaignManifest
+
+manifest = CampaignManifest(
+    name="reactor_opt",
+    parameters={"POWER": [10.0, 50.0]},
+    templates=["model.inp"],
+    commands=["echo peak_temp > data.csv", "echo 450.0 >> data.csv"],
+    execution={"shell": True},
+)
+campaign = Campaign(manifest)
+res = campaign.optimize(
+    objective_metric="peak_temp",
+    direction="minimize",
+    method="grid",
+    grid_points=3,
+    budget=5,
+)
+print("Best candidate:", res.best_candidate)
 ```
 
 Semantics: `budget` counts *simulated* evaluations (successes + failures);
