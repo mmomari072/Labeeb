@@ -1,3 +1,4 @@
+import csv
 import os
 import sys
 import tempfile
@@ -199,6 +200,35 @@ def test_section_6_case_and_harvesters(tmp_path):
         extractor=lambda path: float(path.read_text().split("=")[1])
     )
     assert callable_harvester.harvest() == 1.85
+
+
+def test_section_6_post_output_feedback_adaptive_loop(tmp_path):
+    deck_template = tmp_path / "model.template"
+    deck_template.write_text("POWER = #POWER#\n", encoding="utf-8")
+
+    case = Case(name="adaptive_sim", output_files={"data.csv": ["peak_temp"]})
+    case.database = Database(data={"POWER": [100.0, 100.0, 100.0]})
+    case.FlagsMap = {"#POWER#": "POWER"}
+    case.add_file(File(file_path=str(deck_template)))
+    case.main_dir = str(tmp_path)
+    case.run_case_main_dir = "runs"
+    case.run_type = "new"
+    case.exe_cmd = ["echo peak_temp > data.csv", "echo 600.0 >> data.csv"]
+
+    def adaptive_feedback_hook(outputs, case_obj):
+        peak_temp = outputs["peak_temp"][-1][0] if isinstance(outputs["peak_temp"][-1], list) else outputs["peak_temp"][-1]
+        next_idx = case_obj.case_id + 1
+        if next_idx < len(case_obj.database):
+            if peak_temp > 500.0:
+                current_power = case_obj.database["POWER"][next_idx]
+                case_obj.database.set_row(next_idx, {"POWER": current_power * 0.9})
+        return {"is_overheating": float(peak_temp > 500.0)}
+
+    case.add_post_output_hook("adaptive_feedback", adaptive_feedback_hook)
+    case.launch(parallel=False)
+
+    assert case.outputs["is_overheating"] == [1.0, 1.0, 1.0]
+    assert list(case.database["POWER"]) == [100.0, 90.0, 90.0]
 
 
 def test_section_6_failure_handling_policies(tmp_path):

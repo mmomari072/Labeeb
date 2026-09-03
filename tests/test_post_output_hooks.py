@@ -279,3 +279,55 @@ def test_parallel_launch_hooks_isolated_per_worker(tmp_path):
     assert case.outputs["x"] == [[2.0], [2.0], [2.0]]
     assert case.outputs["row_ok"] == [20.0, 21.0, 22.0]  # per-row, no cross-talk
     assert case.post_output_hook_failures == []
+
+
+# --- post-output feedback & adaptive updates -------------------------------------------
+
+from labeeb.utils.file_io import File
+
+
+def _adaptive_feedback_hook(outputs, case):
+    """Post-output hook deriving output metric and adjusting future database row parameters."""
+    temp = outputs["y"][-1][0] * 20.0  # e.g. 3.0 * 20 = 60.0
+    next_idx = case.case_id + 1
+    if next_idx < len(case.database):
+        if temp > 50.0:
+            # Overheating detected: reduce next row POWER by 50%
+            current_power = case.database["POWER"][next_idx]
+            case.database.set_row(next_idx, {"POWER": current_power * 0.5})
+    return {"temp": temp}
+
+
+def test_post_output_feedback_updates_future_database_rows_sequentially(tmp_path):
+    data_file = tmp_path / "data.csv"
+    with open(data_file, "w", newline="", encoding="utf-8") as handle:
+        csv.writer(handle).writerows([("x", "y"), (2.0, 3.0)])
+
+    deck_template = tmp_path / "deck.template"
+    deck_template.write_text("POWER = #POWER#\n", encoding="utf-8")
+
+    case = Case(name="feedback_case", output_files={"data.csv": ["x", "y"]})
+    case.database = Database(data={"POWER": [100.0, 100.0, 100.0]})
+    case.FlagsMap = {"#POWER#": "POWER"}
+    case.add_file(File(file_path=str(deck_template)))
+    case.main_dir = str(tmp_path)
+    case.run_case_main_dir = "runs"
+    case.run_type = "new"
+    case.exe_cmd = []
+    case.objects_to_be_copied = [str(data_file)]
+    case.add_post_output_hook("adaptive_feedback", _adaptive_feedback_hook)
+
+    # Launch sequentially so row 0 hook updates row 1 before row 1 launches
+    case.launch(parallel=False)
+
+    # Row 0 runs with POWER=100.0, hook sees temp=60.0 > 50.0, updates row 1 POWER -> 50.0
+    # Row 1 runs with POWER=50.0, hook sees temp=60.0 > 50.0, updates row 2 POWER -> 50.0
+    assert list(case.database["POWER"]) == [100.0, 50.0, 50.0]
+    assert case.outputs["temp"] == [60.0, 60.0, 60.0]
+
+    # Verify rendered templates for case_1 and case_2 reflect updated POWER parameters
+    deck_1 = tmp_path / "runs" / "case_1" / "deck.template"
+    deck_2 = tmp_path / "runs" / "case_2" / "deck.template"
+    assert "POWER = 50.0" in deck_1.read_text(encoding="utf-8")
+    assert "POWER = 50.0" in deck_2.read_text(encoding="utf-8")
+
