@@ -87,6 +87,7 @@ explicitly enabled with `LABEEB_SHOW_BANNER` or `print_banner()`.
 * **Vectorized Column Operations**: The `Attribute` class provides element-wise numerical operations and logical masking.
 * **Storage Agnostic**: `Database` interfaces directly with `pandas.DataFrame` under the hood for serializing to and from CSV, Excel, Parquet, JSON, and Pickle.
 * **Integrity Constraints**: All `Attribute` instances in a `Database` must share identical lengths ($N$ rows).
+* **Derived Attributes (v2)**: `add_derived_attribute(name, function, dependencies=None, *, context='row', unit=None, ...)` computes columns from existing data via string expressions, per-row callables (`context='row'`: row dict), or database-aware callables `(database, index)` (`context='database'`: lag/prior-row/global reads, or `index=None` for whole-column/vectorized results). Dependencies are validated (missing/self/circular rejected via DFS + topological order), results are recomputed in topological order after source writes (`set_row`/`__setitem__`/sampled-attribute refresh), evaluation errors surface as `DatabaseError`, and columns carry `unit`/`description`/`Type` metadata plus provenance via `derived_attributes()`; `remove_derived_attribute()` reverts to a plain column or drops it.
 
 ### 2.2 Sampling Subsystem (`labeeb.sampler`)
 * **Deterministic Sweeps**: `FOATConstructor` handles full-factorial combinations of multi-dimensional discrete parameters.
