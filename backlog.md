@@ -33,7 +33,8 @@ secret redaction, JSON logging, and concurrent-safe JSONL appends.
 
 | **v1.5.0** | Comprehensive API observability and execution audit trail | Full suite green, redaction/lifecycle/retry/artifact/concurrency coverage, committed and pushed | Released |
 | **v1.22.0** | Shareable campaign memory and live online analysis | Redacted bundle export, provider-neutral sharing, opt-in consent, non-blocking live figures, integrity and privacy tests | Released |
-| **v1.23.0** | Coupling reliability, nested progress, and secure execution | Coupling restart tests, progress-style compatibility tests, safe argv execution, full suite green, committed and pushed | Release candidate |
+| **v1.24.0** | Optional integration dependencies | Excel/Parquet/plot extras, clear missing-engine guidance, focused and full suite green, committed and pushed | Release candidate |
+| **v1.23.0** | Coupling reliability, nested progress, and secure execution | Coupling restart tests, progress-style compatibility tests, safe argv execution, full suite green, committed and pushed | Released |
 
 ### PF-010 — Shareable campaign memory for online analysis
 
