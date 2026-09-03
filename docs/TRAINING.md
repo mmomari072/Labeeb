@@ -1,4 +1,4 @@
-# Labeeb API-First Training Curriculum (v1.20.7)
+# Labeeb API-First Training Curriculum (v1.21.0)
 
 > **Goal**: Master sensitivity analysis (SA) and uncertainty analysis (UA) workflows using the Labeeb Python API.  
 > **Audience**: Python developers, simulation engineers, researchers  
@@ -56,7 +56,7 @@ cd /path/to/Labeeb
 python -m pip install -e .[dev]
 
 # Verify installation
-python -c "import labeeb; print(labeeb.__version__)"  # v1.20.7
+python -c "import labeeb; print(labeeb.__version__)"  # v1.21.0
 ```
 
 **Exercise 0.1**: First Script
@@ -958,4 +958,3 @@ If yes to 7+ of 9: **You've mastered the Labeeb API!** 🎓
 
 **Total Curriculum Time**: ~20 hours of guided study + capstone project  
 **Estimated Hands-On Practice**: 30+ hours of case studies and variations
-
