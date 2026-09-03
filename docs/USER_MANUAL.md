@@ -1,8 +1,8 @@
-# Labeeb (لبيب) v1.6.0 User Manual & API Guide
+# Labeeb (لبيب) v1.20.4 User Manual & API Guide
 
 > **Sensitivity & Uncertainty Analysis, Simulation Coupling, and Online State Analysis API**  
 > **Author**: Eng. Mohammad Omari  
-> **Version**: 1.6.0  
+> **Version**: 1.20.4
 
 ---
 
@@ -48,7 +48,7 @@ are listed in `requirements.txt`.
 Verify the installation:
 ```python
 import labeeb
-print(labeeb.__version__)  # Output: 1.6.0
+print(labeeb.__version__)  # Output: 1.20.4
 ```
 
 ---
