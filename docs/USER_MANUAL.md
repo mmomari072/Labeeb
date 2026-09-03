@@ -1379,6 +1379,46 @@ Treat surrogate predictions as proposals, not validated simulation results:
 run selected candidates through the real objective and refit after adding new
 evaluations.
 
+### User-defined adaptive proposal function
+
+For an adaptive sweep, define a user function (UDF) that is called after a
+configurable number of completed rows. It can fit or update an NN and return
+new input rows for the next execution batch:
+
+```python
+from labeeb import NeuralMLPSurrogate, rank_candidates
+
+model = NeuralMLPSurrogate(["POWER", "FLOW"], seed=7, epochs=300)
+
+def nn_propose_next(database, results, index):
+    """Return new input rows after enough successful results exist."""
+    history = [item for item in results if item.status == "SUCCESS"]
+    if len(history) < 10:
+        return []
+    # Adapt this conversion to the project's result/history representation.
+    model.fit_from_history([item.evaluation for item in history])
+    ranked = rank_candidates(
+        model,
+        {"POWER": (10.0, 50.0), "FLOW": (100.0, 300.0)},
+        n=25,
+        seed=index,
+    )
+    return [candidate for _prediction, candidate in ranked[:2]]
+```
+
+An adaptive runner can call this UDF after every `post_every` rows and append
+the returned candidates to a pending queue:
+
+```python
+# Planned adaptive-runner interface; fixed sweeps remain unchanged.
+campaign.run(adaptive=True, post_every=5,
+             post_function=nn_propose_next, max_cases=35)
+```
+
+The callback should propose inputs only; the runner remains responsible for
+executing cases, preserving row alignment, enforcing the total budget, and
+recording the final simulation outputs.
+
 ## 15. Exception Hierarchy
 
 All domain exceptions inherit from `LabeebError`:

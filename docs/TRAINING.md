@@ -843,6 +843,30 @@ points with the real `Case`/`Campaign` objective, retain the new history, and
 refit before another search round. Optional engines are lazy-loaded; without
 their package, Labeeb raises `OptimizationError` with an install hint.
 
+**Exercise 10.2**: Write a user-defined NN proposal function
+
+```python
+def nn_propose_next(database, results, index):
+    """Return candidates only after ten successful evaluations."""
+    successful = [item for item in results if item.status == "SUCCESS"]
+    if len(successful) < 10:
+        return []
+    model.fit_from_history([item.evaluation for item in successful])
+    ranked = rank_candidates(
+        model,
+        {"POWER": (10.0, 50.0), "FLOW": (100.0, 300.0)},
+        n=25,
+        seed=index,
+    )
+    return [candidate for _score, candidate in ranked[:2]]
+```
+
+In the planned adaptive-runner interface, register it with
+`campaign.run(adaptive=True, post_every=5, post_function=nn_propose_next,
+max_cases=35)`. The function proposes rows; Labeeb executes them and records
+their validated outputs. A normal fixed-row sweep is not changed unless
+`adaptive=True` is explicitly enabled.
+
 ### 10b. Custom Execution Backends
 - Implement `ExecutionBackend` interface for HPC, cloud, or custom schedulers
 - Inject via `case.execution_backend = MyBackend()`
