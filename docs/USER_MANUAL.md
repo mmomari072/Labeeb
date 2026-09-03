@@ -122,7 +122,7 @@ db_new.import_from_file("core_sampling.csv")
 
 ## 4. Parameter Sampling & Design Matrices
 
-### Full Factorial & One-At-A-Time Sweeps (`FOATConstructor`)
+### Full Factorial and One-At-A-Time Sweeps
 Construct Cartesian product grids across parameter ranges:
 
 ```python
@@ -142,11 +142,31 @@ grid_db = Database(data=grid_dict)
 print(f"Generated {len(grid_db)} parameter rows.")  # 6 rows
 ```
 
+For an OAT design, use `OATConstructor`. The first value for each attribute is
+the baseline; each following row changes one attribute while the others remain
+at baseline:
+
+```python
+from labeeb.sampler import OATConstructor
+
+oat = OATConstructor()
+oat.add_case({"INLET_TEMP": [25.0, 30.0, 35.0], "CORE_FLOW": [1200.0, 1400.0]})
+oat_dict = oat.construct()
+# Rows: (25, 1200), (30, 1200), (35, 1200), (25, 1400)
+```
+
+Attributes can use different sampling strategies when building a `Database`:
+
+```python
+db.add_sampled_attribute("INLET_TEMP", lambda size: uniform_sample(25.0, 35.0, size), size=8)
+db.add_sampled_attribute("CORE_FLOW", lambda size: normal_sample(1300.0, 50.0, size), size=8)
+```
+
 ### Advanced Sampling: Latin Hypercube & Halton Sequences
 Generate space-filling low-discrepancy sequences for uncertainty quantification using the `size` parameter:
 
 ```python
-from labeeb import halton_sample, latin_hypercube_sample
+from labeeb import halton_sample, latin_hypercube_sample, normal_sample, uniform_sample
 
 # Latin Hypercube Sampling with bounding intervals
 bounds = [(18.0, 20.0), (0.01, 0.05)]  # (RHO range, WF range)

@@ -48,6 +48,7 @@ from .extractors import (
 from .sampler import (
     DiscreteSampling,
     FOATConstructor,
+    OATConstructor,
     halton_sample,
     latin_hypercube_sample,
     normal_sample,
@@ -102,7 +103,7 @@ __all__ = [
     "CampaignMemory", "CampaignStateStore", "Case", "CaseExecutionError", "CaseResult", "CompositeEventPublisher", "Constraint", "Coupler",
     "CsvHarvester", "StatusRegistry", "ExecutionStatusRegistry", "EventPublisher", "EvaluationRecord", "ExcelHarvester", "OptimizeResult", "Optimizer", "OptimizationError", "NeuralMLPSurrogate",
     "CouplingError", "Database", "DatabaseError", "DiscreteSampling", "ExecutionBackend",
-    "ExecutionEvent", "ExecutionResult", "ExtractionError", "FOATConstructor", "File", "Flag", "FlagsMap",
+    "ExecutionEvent", "ExecutionResult", "ExtractionError", "FOATConstructor", "OATConstructor", "File", "Flag", "FlagsMap",
     "Harvester", "InMemorySharedBackend", "JsonHarvester", "JsonlEventPublisher", "LabeebError", "LiveObserver", "LivePlot", "LocalExecutionBackend", "NullEventPublisher", "OutputCatalog", "OutputRecord", "PlotObserver", "PublisherError", "RedisStreamEventPublisher", "RegexHarvester", "SamplingError", "SharedMemoryBackend", "SharedMemoryError", "TemplateError", "WebSocketEventPublisher", "correlation_analysis",
     "append_execution_event", "create_backup", "evaluate_expression", "export_analysis_bundle", "export_case_results", "export_execution_events", "export_optimization_history", "extract_csv", "extract_excel", "extract_json", "extract_regex", "format_value", "halton_sample",
     "latin_hypercube_sample", "load_analysis_bundle", "load_manifest", "morris_screening", "normal_sample", "product",

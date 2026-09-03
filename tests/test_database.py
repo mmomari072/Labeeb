@@ -2,6 +2,7 @@ import math
 import os
 import tempfile
 import pytest
+import numpy as np
 from labeeb.database import Attribute, Database
 from labeeb.exceptions import DatabaseError
 
@@ -51,6 +52,23 @@ def test_database_creation_and_alignment():
     assert len(db) == 3  # Maximum length of column
     assert db["col1"][2] is None  # Resized and padded with None
     assert list(db["__db_index__"]) == [0, 1, 2]
+
+
+def test_database_accepts_independent_sampler_per_attribute():
+    db = Database(name="sampled")
+    db.add_sampled_attribute("x", lambda size: [10 + i for i in range(size)], size=3)
+    db.add_sampled_attribute("y", lambda size: [0.1 * (i + 1) for i in range(size)], size=3)
+
+    assert list(db["x"]) == [10.0, 11.0, 12.0]
+    assert list(db["y"]) == pytest.approx([0.1, 0.2, 0.3])
+    assert list(db["__db_index__"]) == [0, 1, 2]
+
+
+def test_database_accepts_array_returning_sampler():
+    db = Database()
+    db.add_sampled_attribute("x", lambda size: np.arange(size), size=3)
+
+    assert list(db["x"]) == [0.0, 1.0, 2.0]
 
 
 def test_database_get_row():

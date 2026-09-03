@@ -17,7 +17,7 @@ Version scope: v1.20.7 feature surface, including the current LAB-* release gate
 labeeb/
   __init__.py      package exports + __all__ (public API surface)
   database.py      Attribute (typed 1D column) + Database (dict-backed tabular store)
-  sampler.py       FOATConstructor, DiscreteSampling, uniform/normal/halton/LHS samples
+  sampler.py       FOATConstructor, OATConstructor, DiscreteSampling, uniform/normal/halton/LHS samples
   case.py          Flag/FlagsMap, Case (runner), failure policies, harvesters wiring
   coupled_unit.py  CoupledUnit base + ConvergenceResult (Case & Coupler share it)
   coupler.py       Coupler: multi-code iterative coupling (units = Case or Coupler)

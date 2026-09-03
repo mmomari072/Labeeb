@@ -244,3 +244,42 @@ class FOATConstructor:
                 self.samples[attr].append(val)
 
         return self.samples
+
+
+class OATConstructor(FOATConstructor):
+    """One-at-a-time design constructor using each parameter's first value as baseline."""
+
+    def __init__(self, case_name: Optional[str] = None):
+        super().__init__(case_name=case_name)
+        self.description = "One-at-a-Time Sweep Constructor"
+
+    def construct(self) -> Dict[str, List[Any]]:
+        """Construct a baseline row plus one-parameter-at-a-time variations."""
+        if not self.cases:
+            self.samples = {}
+            return self.samples
+
+        attrs = list(self.cases.keys())
+        for attr in attrs:
+            if not self.cases[attr]:
+                raise SamplingError(f"OAT values for attribute '{attr}' must not be empty")
+
+        self.samples = {attr: [] for attr in attrs}
+        self.samples.update({f"__{attr}_index__": [] for attr in attrs})
+        baseline = {attr: values[0] for attr, values in self.cases.items()}
+        baseline_indices = {attr: 0 for attr in attrs}
+
+        def append_case(values: Dict[str, Any], indices: Dict[str, int]) -> None:
+            for attr in attrs:
+                self.samples[attr].append(values[attr])
+                self.samples[f"__{attr}_index__"].append(indices[attr])
+
+        append_case(baseline, baseline_indices)
+        for attr in attrs:
+            for index, value in enumerate(self.cases[attr][1:], start=1):
+                values = dict(baseline)
+                indices = dict(baseline_indices)
+                values[attr] = value
+                indices[attr] = index
+                append_case(values, indices)
+        return self.samples

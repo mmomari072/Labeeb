@@ -2,7 +2,7 @@ import random
 
 import pytest
 
-from labeeb.sampler import DiscreteSampling, FOATConstructor
+from labeeb.sampler import DiscreteSampling, FOATConstructor, OATConstructor
 from labeeb.exceptions import SamplingError
 
 
@@ -73,3 +73,25 @@ def test_foat_constructor_grid_sweep():
     ]
     actual_indices = list(zip(result["__a_index__"], result["__b_index__"]))
     assert actual_indices == expected_indices
+
+
+def test_oat_constructor_varies_one_parameter_from_baseline():
+    constructor = OATConstructor()
+    constructor.add_case({"a": [1, 2, 3], "b": [10, 20]})
+
+    result = constructor.construct()
+
+    assert list(zip(result["a"], result["b"])) == [
+        (1, 10), (2, 10), (3, 10), (1, 20)
+    ]
+    assert list(zip(result["__a_index__"], result["__b_index__"])) == [
+        (0, 0), (1, 0), (2, 0), (0, 1)
+    ]
+
+
+def test_oat_constructor_rejects_empty_parameter_values():
+    constructor = OATConstructor()
+    constructor.add_case({"a": []})
+
+    with pytest.raises(SamplingError):
+        constructor.construct()
