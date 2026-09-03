@@ -77,6 +77,10 @@ Install the runtime package:
 
 ```bash
 python -m pip install labeeb
+# Optional integrations: pip install "labeeb[excel,parquet]" (spreadsheets/parquet),
+# "labeeb[plot]" (live plotting), "labeeb[all]" (everything).
+# Core installation needs only pandas/numpy/pyyaml; Excel/Parquet/plotting
+# features raise clear install hints when their optional engine is absent.
 ```
 
 Install from a local checkout in editable mode:
