@@ -185,6 +185,23 @@ into catalog metrics via per-key deltas). Validation: callable + unique names
 Parallel workers each run their own copy; hook-created columns are union-merged
 in `case_id` order.
 
+### 3.7 Coupling stability & restart (`Coupler`)
+
+`Coupler.relax()` mixes elementwise for scalar OR vector (list/tuple/numpy)
+values via per-attribute omega; `enable_aitken(attr, min_iterations)` applies
+Aitken delta-squared to the raw iterate sequence once enough history exists
+(off by default; guarded denominator). Each coupling pass is atomic:
+`Coupler._run_once` snapshots the shared row and restores it if the pass
+raises `CouplingError` (divergence), so the database always holds the last
+COMPLETE state; `run_to_convergence(error_on_max_exec=True)` exhaustion keeps
+the final completed pass and records `last_convergence` before raising.
+`save_state(path)`/`load_state(path)` serialize the shared row, c_step,
+relaxation/Aitken controls, thresholds and unit budgets (atomic JSON write;
+callables must be re-registered after load). `add_progress_callback(fn)`
+registers observational callbacks fired once per complete pass with a
+deep-copied snapshot (cannot mutate; exceptions swallowed); nested Couplers
+report child-pass before parent-pass.
+
 ---
 
 ## 4. Lifecycle, Events & Timing

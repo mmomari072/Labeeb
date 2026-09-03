@@ -770,6 +770,49 @@ result = coupler.run_to_convergence(
 )
 ```
 
+### Typed Relaxation, Aitken Acceleration & Restart
+
+Under-relaxation accepts scalar *or* vector values (lists, tuples, numpy
+arrays are mixed elementwise) and Aitken delta-squared acceleration can be
+enabled per attribute with a deterministic default (off; extrapolation starts
+after `min_iterations` raw iterates, guarded against zero denominators):
+
+```python
+# Vector/typed relaxation: elementwise omega mixing
+coupler.set_under_relaxation("POWER_MAP", 0.4)
+coupler.relax("POWER_MAP", [1.2, 3.0], old_value=[1.0, 2.0])  # -> [1.08, 2.4]
+
+# Aitken acceleration on the shared iterate sequence (deterministic)
+coupler.enable_aitken("POWER", min_iterations=3)   # accelerate from 3rd raw iterate
+coupler.disable_aitken("POWER")                    # deterministic identity afterwards
+```
+
+Divergence and exhaustion semantics preserve the **last complete state**: a
+pass is atomic — if `CouplingError` is raised mid-pass (divergence detector or
+threshold), the shared row is restored to the pre-pass snapshot before the
+error propagates; exhausted `run_to_convergence(error_on_max_exec=True)` keeps
+the final completed pass (recorded on `last_convergence`) and then raises.
+Coupling state can be checkpointed and resumed:
+
+```python
+coupler.save_state("coupling_step_2.json")     # row, step, relaxation/Aitken controls
+# ... later, in a fresh process (re-register callables first) ...
+coupler.load_state("coupling_step_2.json")
+coupler.launch_case(2)                          # continue from the saved step
+```
+
+Observational progress callbacks fire once per COMPLETE pass with a
+deep-copied read-only snapshot (`name`, `c_step`, `attempt`, `status`,
+`case_names`, `database_row`, `last_convergence`); they cannot mutate the
+coupler and exceptions inside them are swallowed:
+
+```python
+coupler.add_progress_callback(lambda snap: log_step(snap["c_step"], snap["status"]))
+```
+
+Nested `Coupler` children report their own completed passes before the parent
+reports its completed pass (deterministic ordering).
+
 ---
 
 ## 9. Streaming Events, Transports, & Live Observers (`labeeb.publisher`, `labeeb.plot`)
