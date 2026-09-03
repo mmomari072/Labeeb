@@ -362,6 +362,48 @@ Contract:
   its own row (hooks must not share mutable state across calls); hook-created
   columns merge back in `case_id` order like regular outputs.
 
+##### Post-Output Feedback & Sequential Adaptive Optimization
+
+Post-output hooks can perform **adaptive feedback loops** — deriving output metrics from current harvested results and updating parameter values in `case.database` for subsequent rows before those future cases execute.
+
+```python
+def adaptive_feedback_hook(outputs, case):
+    # 1. Harvest or derive metric for the current row (case.case_id)
+    peak_temp = outputs["peak_temp"][-1]
+    
+    # 2. Derive output metric returned to case.outputs & OutputCatalog
+    derived_metrics = {"is_overheating": float(peak_temp > 500.0)}
+
+    # 3. Feedback update: adjust input parameters for the NEXT database row (case_id + 1)
+    next_idx = case.case_id + 1
+    if next_idx < len(case.database):
+        if peak_temp > 500.0:
+            # Overheating detected: reduce next row POWER parameter by 10%
+            current_power = case.database["POWER"][next_idx]
+            case.database.set_row(next_idx, {"POWER": current_power * 0.9})
+            
+    return derived_metrics
+
+case.add_post_output_hook("adaptive_feedback", adaptive_feedback_hook)
+```
+
+Key Semantics & Operational Rules:
+
+* **Current vs. Future Input Timing**:
+  - Modifying row $i$'s inputs inside row $i$'s post-output hook does *not* re-render or re-run row $i$, because command execution and output harvesting for row $i$ have already completed.
+  - Modifying future rows in `case.database` (e.g. `case.database.set_row(i + 1, ...)` or `case.database["PARAM"][i + 1] = new_val`) updates input parameters *before* `launch_case(i + 1)` runs. When row $i + 1$ launches, its templates are rendered from the updated `case.database` parameters.
+* **`outputs` vs `case.database`**:
+  - `outputs` (`case.outputs`): dictionary of harvested simulation metrics (`{metric: [val_0, val_1, ...]}`). Returning `{metric: value}` appends a synthesized metric to `case.outputs`.
+  - `case.database`: tabular parameter store containing input parameters and derived attributes. Post-output hooks update `case.database` to feed back adjustments into future case executions.
+* **State / Catalog / Failure Behavior & Row Alignment**:
+  - `CampaignStateStore` records the final result payload for each case.
+  - `OutputCatalog` records the executed parameters, exit code, duration, harvested outputs, and hook-synthesized metrics per attempt row.
+  - Hook exceptions follow `harvest_failure_policy`: `stop` (default) fails the case with `CaseExecutionError`; `continue` records the failure on `case.post_output_hook_failures` without aborting remaining cases.
+  - Row alignment: Each case execution appends exactly one value per metric in `case.outputs`, guaranteeing exact row index alignment matching `case_id`.
+* **Parallel-Safety Limits**:
+  - **Sequential Execution (`parallel=False`, default)**: Adaptive feedback works deterministically because row $i$ completes its post-output hook before row $i + 1$ prepares and launches.
+  - **Parallel Execution (`parallel=True`, `n_workers > 1`)**: Workers run concurrently in isolated process copies of `case`. Modifications to `case.database` inside a parallel worker process modify only that worker's local process memory and **cannot affect other concurrent or future parallel workers**. Therefore, **adaptive post-output feedback updating `case.database` for future rows requires sequential execution (`parallel=False`)**.
+
 ### Structured Execution Logging & Redaction
 Every shell command executed through `Case.launch()` or `LocalExecutionBackend` produces an auditable `ExecutionEvent` record and, when JSON logging is enabled, a structured log line. Events are also recorded per case in `case.execution_history` and can be exported:
 
@@ -1069,6 +1111,22 @@ objectives are recorded as failures and never become the best; maximize via
   Requires: `pip install torch`.
 * `BoTorchGPSurrogate(var_names)` — optional BoTorch single-task GP
   surrogate. Requires: `pip install botorch`.
+* `rank_candidates(predictor, variables, n=100, method="random", seed=42,
+  direction="minimize")` — pure-stdlib acquisition helper: samples candidates
+  in the domain (seeded per-index random, or a grid), scores them with any
+  fitted surrogate (`.predict`) or plain callable, and returns
+  `[(prediction, candidate), ...]` sorted best-first and deterministic per
+  seed — ready to plug into the next `Optimizer` round for surrogate-guided
+  search. No engine required.
+
+Runnable end-to-end example (core only, no engines needed):
+
+```bash
+python examples/optimize_ai_case_study.py   # Case per candidate, 7 runs
+```
+
+With `scikit-learn` installed the example additionally fits a RandomForest
+surrogate on the history and prints `rank_candidates` top picks.
 
 ```python
 # scikit-learn only: fit a surrogate on a finished optimization, then predict

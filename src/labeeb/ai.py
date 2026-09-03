@@ -31,6 +31,7 @@ import base64
 import math
 import os
 import pickle
+import random
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
@@ -43,6 +44,7 @@ __all__ = [
     "SurrogateModel",
     "optimize_optuna",
     "optimize_scipy",
+    "rank_candidates",
 ]
 
 _SURROGATE_FORMAT = "labeeb-surrogate"
@@ -590,3 +592,75 @@ class BoTorchGPSurrogate:
         instance._model = model
         instance._bounds = envelope["bounds"]
         return instance
+
+
+def rank_candidates(
+    predictor: Callable[[Dict[str, float]], float],
+    variables: Dict[str, Tuple[float, float]],
+    n: int = 100,
+    method: str = "random",
+    seed: int = 42,
+    direction: str = "minimize",
+) -> List[Tuple[float, Dict[str, float]]]:
+    """Score candidate designs with a fitted predictor and rank them.
+
+    Pure-stdlib acquisition helper for surrogate-guided search: samples
+    candidates inside ``variables`` bounds (seeded per-index ``random``, or a
+    deterministic mixed-radix ``grid`` covering at least ``n`` points), asks
+    ``predictor`` (any fitted surrogate exposing ``predict(candidate)`` —
+    :class:`SurrogateModel`, :class:`NeuralMLPSurrogate`,
+    :class:`BoTorchGPSurrogate`, or a plain callable) to score each one, and
+    returns ``[(prediction, candidate), ...]`` sorted best-first for
+    ``direction``. Deterministic for a given seed/method, so a resumed
+    surrogate search reproduces identical rankings.
+    """
+    import math as _math
+
+    if callable(predictor):
+        score_fn = predictor
+    elif hasattr(predictor, "predict") and callable(predictor.predict):
+        score_fn = predictor.predict
+    else:
+        raise OptimizationError(
+            "predictor must be callable(candidate) -> float or expose a callable .predict()"
+        )
+    if not isinstance(variables, dict) or not variables:
+        raise OptimizationError("variables must be a non-empty {name: (low, high)} dict")
+    names = list(variables)
+    for name, (low, high) in variables.items():
+        if low > high or not (_math.isfinite(low) and _math.isfinite(high)):
+            raise OptimizationError(f"variable {name!r} bounds must be finite with low <= high")
+    if not isinstance(n, int) or n < 1:
+        raise OptimizationError("n must be an integer >= 1")
+    if method not in ("random", "grid"):
+        raise OptimizationError("method must be 'random' or 'grid'")
+    if direction not in ("minimize", "maximize"):
+        raise OptimizationError("direction must be 'minimize' or 'maximize'")
+
+    def sample(index: int) -> Dict[str, float]:
+        if method == "random":
+            rng = random.Random(f"{seed}:{index}")
+            return {name: low + rng.random() * (high - low) for name, (low, high) in variables.items()}
+        # grid: mixed-radix decode over ceil(n^(1/k)) divisions per variable
+        divisions = max(2, int(round(n ** (1.0 / len(names)))))
+        position = index
+        candidate: Dict[str, float] = {}
+        for name in names:
+            low, high = variables[name]
+            step = (high - low) / (divisions - 1)
+            candidate[name] = low + (position % divisions) * step
+            position //= divisions
+        return candidate
+
+    grid_size = divisions = None
+    if method == "grid":
+        divisions = max(2, int(round(n ** (1.0 / len(names)))))
+        grid_size = divisions ** len(names)
+    total = n if method == "random" else min(n, grid_size)  # type: ignore[operator]
+    scored = []
+    for index in range(total):
+        candidate = sample(index)
+        prediction = float(score_fn(candidate))
+        scored.append((prediction, candidate))
+    scored.sort(key=lambda item: item[0], reverse=(direction == "maximize"))
+    return scored
