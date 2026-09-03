@@ -155,6 +155,21 @@ oat_dict = oat.construct()
 # Rows: (25, 1200), (30, 1200), (35, 1200), (25, 1400)
 ```
 
+Choose the design based on the question you are answering:
+
+| Design | Changes per run | Typical use |
+| --- | --- | --- |
+| `FOATConstructor` | Every combination of every parameter | Complete interaction study when the grid is small |
+| `OATConstructor` | One parameter at a time from a shared baseline | Screening, ranking sensitivities, and quick optimization setup |
+| Per-attribute samplers | Each attribute follows its own distribution | Uncertainty quantification and randomized campaigns |
+
+Use FOAT when parameter interactions are important and the Cartesian product is
+tractable. Use OAT when you need an interpretable baseline comparison and want
+to limit the number of runs. Use independent attribute samplers when values
+should represent distributions rather than a fixed design grid. These approaches
+can also be combined: generate a design with a constructor, then derive or
+sample additional database attributes before launching the campaign.
+
 Attributes can use different sampling strategies when building a `Database`:
 
 ```python
