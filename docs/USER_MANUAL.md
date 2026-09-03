@@ -2,7 +2,6 @@
 
 > **Sensitivity & Uncertainty Analysis, Simulation Coupling, and Online State Analysis API**  
 > **Author**: Eng. Mohammad Omari  
-> **Institution**: Jordan Research and Training Reactor (JRTR)  
 > **Version**: 1.6.0  
 
 ---
@@ -961,7 +960,7 @@ def run_reactor_case_study(workspace_dir=None, n_samples=8, include_failure_test
         # 2. Template Deck Setup
         template_file = work_root / "reactor.template"
         template_file.write_text(
-            "TITLE JRTR Core Sensitivity Model\n"
+            "TITLE Generic Core Sensitivity Model\n"
             "PARAM ENRICHMENT = #ENRICH#\n"
             "PARAM FLOW_RATE = #FLOW#\n"
             "PARAM POWER_MW = #POWER#\n"
@@ -982,14 +981,14 @@ def run_reactor_case_study(workspace_dir=None, n_samples=8, include_failure_test
             "keff = 1.0000 + 1.25 * (enrich - 0.1975) - 0.00005 * (flow - 1200.0)\n"
             "peak_temp = 293.15 + (power * 1e6) / (flow * 4184.0) * 15.0\n"
             "with open('physics.log', 'w') as f:\n"
-            "    f.write(f'JRTR Simulation Converged: final keff = {keff:.5f}\\n')\n"
+            "    f.write(f'Simulation Converged: final keff = {keff:.5f}\\n')\n"
             "    f.write(f'Maximum Fuel Temperature: {peak_temp:.2f} K\\n')\n"
         )
         stub_cmd = f"{sys.executable} {stub_file.resolve()}"
 
         # 4. Campaign Orchestration with Event Publishing and Shared Memory
         manifest = CampaignManifest(
-            name="jrtr_reactor_case_study",
+            name="reactor_case_study",
             parameters={
                 "ENRICH": db["ENRICH"].tolist(),
                 "FLOW": db["FLOW"].tolist(),
@@ -1033,7 +1032,7 @@ def run_reactor_case_study(workspace_dir=None, n_samples=8, include_failure_test
             output=harvested_keffs,
         )
 
-        bundle_path = work_root / "jrtr_reactor_case_study.zip"
+        bundle_path = work_root / "reactor_case_study.zip"
         campaign.export_bundle(bundle_path, results=results)
         print("Sensitivity Correlations:\n", correlations)
         return {"results": results, "correlations": correlations, "bundle": bundle_path}

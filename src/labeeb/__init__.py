@@ -1,6 +1,6 @@
 """
 Labeeb: Sensitivity and Uncertainty Analysis interface for text-based input deck codes.
-Developed for nuclear reactor code coupling and sensitivity analysis (MCNP, RELAP5, etc.).
+Designed for simulation-code coupling and sensitivity analysis (MCNP, RELAP5, etc.).
 """
 
 import os
@@ -124,7 +124,6 @@ def print_banner() -> None:
     )
     print("----------------------------------------------------")
     print("CREATED BY : Eng. Mohammad OMARI")
-    print("INSTITUTE  : Jordan Research and Training Reactor")
     print(f"VERSION    : {__version__}")
     print("DATE       : Aug 2026")
     print("*" * 80)

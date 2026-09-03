@@ -36,7 +36,7 @@ from labeeb.shared_memory import CampaignMemory
 def create_reactor_template(template_path: Path) -> Path:
     """Create a parameterized reactor input deck template."""
     content = (
-        "TITLE JRTR Core Sensitivity Model\n"
+        "TITLE Generic Core Sensitivity Model\n"
         "PARAM ENRICHMENT = #ENRICH#\n"
         "PARAM FLOW_RATE = #FLOW#\n"
         "PARAM POWER_MW = #POWER#\n"
@@ -78,7 +78,7 @@ def create_physics_stub(stub_path: Path) -> Path:
         "    f.write('keff,peak_temp,peak_flux\\n')\n"
         "    f.write(f'{keff:.5f},{peak_temp:.2f},{peak_flux:.4e}\\n')\n\n"
         "with open('physics.log', 'w', encoding='utf-8') as f:\n"
-        "    f.write(f'JRTR Simulation Converged: final keff = {keff:.5f}\\n')\n"
+        "    f.write(f'Simulation Converged: final keff = {keff:.5f}\\n')\n"
         "    f.write(f'Maximum Fuel Temperature: {peak_temp:.2f} K\\n')\n"
     )
     stub_path.write_text(script, encoding="utf-8")
@@ -160,7 +160,7 @@ def run_reactor_case_study(
 
         # 3. Campaign Orchestration with Event Publishing and Shared Memory
         manifest = CampaignManifest(
-            name="jrtr_reactor_case_study",
+            name="reactor_case_study",
             parameters={
                 "ENRICH": db["ENRICH"].tolist(),
                 "FLOW": db["FLOW"].tolist(),
@@ -227,7 +227,7 @@ def run_reactor_case_study(
         csv_export = work_root / "campaign_results.csv"
         export_case_results(results, csv_export)
 
-        bundle_path = work_root / "jrtr_reactor_case_study.zip"
+        bundle_path = work_root / "reactor_case_study.zip"
         bundle = campaign.export_bundle(
             bundle_path,
             results=results,

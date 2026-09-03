@@ -52,7 +52,7 @@ def test_reactor_case_study_execution(tmp_path):
     assert bundle_path.is_file()
 
     loaded_bundle = load_analysis_bundle(bundle_path)
-    assert loaded_bundle.manifest["name"] == "jrtr_reactor_case_study"
+    assert loaded_bundle.manifest["name"] == "reactor_case_study"
     assert len(loaded_bundle.results) == 6
     assert "results_csv" in loaded_bundle.artifacts
     assert "events_log" in loaded_bundle.artifacts

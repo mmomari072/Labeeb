@@ -3,7 +3,6 @@
 > **Project**: Labeeb (لبيب)  
 > **Purpose**: General-purpose Sensitivity & Uncertainty (S&U) analysis and simulation coupling API  
 > **Domain**: Nuclear engineering (MCNP, RELAP5), thermo-hydraulics, neutronics, and general scientific computing relying on text-based input decks  
-> **Institution**: Jordan Research and Training Reactor (JRTR)  
 > **Author**: Eng. Mohammad Omari  
 
 ---
