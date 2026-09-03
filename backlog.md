@@ -33,6 +33,7 @@ secret redaction, JSON logging, and concurrent-safe JSONL appends.
 
 | **v1.5.0** | Comprehensive API observability and execution audit trail | Full suite green, redaction/lifecycle/retry/artifact/concurrency coverage, committed and pushed | Released |
 | **v1.22.0** | Shareable campaign memory and live online analysis | Redacted bundle export, provider-neutral sharing, opt-in consent, non-blocking live figures, integrity and privacy tests | Released |
+| **v1.23.0** | Coupling reliability, nested progress, and secure execution | Coupling restart tests, progress-style compatibility tests, safe argv execution, full suite green, committed and pushed | Release candidate |
 
 ### PF-010 — Shareable campaign memory for online analysis
 
@@ -199,8 +200,8 @@ Implement these after the release blockers to make Labeeb suitable for repeatabl
 - [ ] **Coupling Stability & Relaxation Controls**:
   - Under-relaxation algorithms and Aitken $\Delta^2$ acceleration to dampen feedback oscillations between physics codes (e.g. neutronics $\leftrightarrow$ thermal-hydraulics).
   - Divergence detection and maximum-iteration failure semantics.
-- [ ] **Hierarchical / Nested Progress Bars**: Subprogress indicators dedicated to coupling iteration steps and inner case runs.
-- [ ] **Coupling State Serialization & Restart**: Checkpoint intermediate state snapshot tables (`coupling_state.parquet`) for resume and post-mortem analysis.
+- [x] **Hierarchical / Nested Progress Bars**: Subprogress indicators dedicated to coupling iteration steps and inner case runs.
+- [x] **Coupling State Serialization & Restart**: Checkpoint intermediate state snapshot tables (`coupling_state.parquet`) for resume and post-mortem analysis.
 
 ---
 
