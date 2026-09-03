@@ -177,6 +177,19 @@ db.add_sampled_attribute("INLET_TEMP", lambda size: uniform_sample(25.0, 35.0, s
 db.add_sampled_attribute("CORE_FLOW", lambda size: normal_sample(1300.0, 50.0, size), size=8)
 ```
 
+Labeeb provides both basic continuous distributions:
+
+* `uniform_sample(start, end, size=1)` draws values uniformly from the
+  interval `[start, end)`.
+* `normal_sample(mean, std, size=1)` draws values from a normal distribution;
+  values are not automatically bounded.
+
+These two helpers use NumPy's global random stream. Set `numpy.random.seed`
+before calling them when legacy reproducibility is required. For isolated
+seeded generation, prefer `latin_hypercube_sample`,
+`correlated_normal_sample`, or `truncated_normal_sample`, which accept a
+`seed`/`rng` argument.
+
 ### Correlated & Truncated Sampling (V2-UQ)
 Joint draws with correlation and physically bounded marginals:
 
@@ -320,6 +333,31 @@ case.capture_output = True
 # Launch all parameter rows
 case.launch()
 ```
+
+#### Choosing `Case` or `Campaign`
+
+There is no `Case.run()` method. Use `Case.launch_case(case_id)` for one
+database row or `Case.launch()` for a directly configured multi-row runner:
+
+```python
+case.launch_case(0)  # one row
+case.launch()        # all rows in case.database
+```
+
+Use `Campaign.run()` when the study is defined by a validated manifest and
+needs orchestration around the underlying `Case` runner:
+
+```python
+campaign = Campaign.from_manifest("campaign.yml", state_path="state.sqlite")
+results = campaign.run(resume=True, max_retries=2)
+```
+
+`Campaign.run()` builds the case, manages resume/retry state, returns ordered
+`CaseResult` records, updates status/memory, writes output-catalog entries,
+and publishes lifecycle events. `Case` is the lower-level execution unit;
+`Campaign` is the reproducible study orchestrator. Normal fixed-row sweeps
+can use either API, but manifest-backed case studies and optimization should
+use `Campaign`.
 
 #### Copy & Render Semantics
 For every database row, `Case.launch()` creates an isolated run directory
