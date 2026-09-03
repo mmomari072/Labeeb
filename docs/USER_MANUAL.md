@@ -21,15 +21,29 @@
 
 ## 2. Installation & Quickstart
 
-Install Labeeb with all optional components (Jinja2 templating, plotting, and dev tools):
+Install the runtime package with pip:
 
 ```bash
-# Editable installation with dev tools
-pip install -e .[dev]
-
-# Or with uv:
-uv pip install -e .[dev]
+python -m pip install labeeb
 ```
+
+For local development, install the checkout in editable mode:
+
+```bash
+python -m pip install -e .
+```
+
+Install development tools and optional documentation/example dependencies:
+
+```bash
+python -m pip install -e ".[dev]"
+# Or use the repository requirements file:
+python -m pip install -r requirements-dev.txt
+```
+
+The project is configured through `pyproject.toml` and also provides a
+`setup.py` compatibility shim for legacy packaging tools. Runtime dependencies
+are listed in `requirements.txt`.
 
 Verify the installation:
 ```python

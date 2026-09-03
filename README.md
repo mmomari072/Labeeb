@@ -32,11 +32,31 @@ graph TD
 
 ## 2. Installation
 
-Install Labeeb locally in editable mode for development:
+Labeeb supports standard pip installation from a checkout or package index.
+
+Install the runtime package:
 
 ```bash
-pip install -e .[dev]
+python -m pip install labeeb
 ```
+
+Install from a local checkout in editable mode:
+
+```bash
+python -m pip install -e .
+```
+
+Install development tools using either the optional dependency group or the
+requirements file:
+
+```bash
+python -m pip install -e ".[dev]"
+# Equivalent requirements-file workflow:
+python -m pip install -r requirements-dev.txt
+```
+
+The repository also includes a `setup.py` compatibility shim for older tools;
+new projects should use the `pyproject.toml`-backed pip commands above.
 
 ---
 
