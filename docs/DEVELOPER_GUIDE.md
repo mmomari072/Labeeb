@@ -113,6 +113,16 @@ secure-by-default: argv sequences run with `shell=False`; plain strings are
 `execution.shell`). Injected/custom backends keep their own contract (Case
 only forwards `shell=` to the local backend).
 
+**Record schemas & cancellation (V2-EXEC-01):** `ExecutionEvent.to_dict()` and
+`CaseResult.to_record()` stamp `schema_version="1"`; the corresponding
+`from_dict`/`from_record` readers accept version-less legacy records (default
+`"1"`) and raise `ValueError` for unsupported versions. `Case.cancel()` is a
+sticky cooperative cancel honored at command/attempt boundaries (skips
+remaining commands/retries, records FAILED with reason `cancelled`); it does
+not kill a running command — mid-command interruption is reserved for the
+future scheduler/container adapters, which must implement the
+`ExecutionBackend.run` contract unchanged.
+
 `LocalExecutionBackend` also honors `set_logger(command_logger)` so case
 context (`case_id`/`unit`/`attempt`) flows into every `ExecutionEvent` and log
 record. Inject your backend with `case.execution_backend = mine`; it must:

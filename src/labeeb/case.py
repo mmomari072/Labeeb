@@ -210,6 +210,11 @@ class Case(CoupledUnit):
         # True -> explicit shell semantics for legacy command strings.
         self.shell: Optional[bool] = None
 
+        # Cooperative cancellation (V2-EXEC-01): sticky once requested;
+        # honored at command/attempt boundaries (between commands, not
+        # mid-command kill — that is a container-adapter concern).
+        self.cancelled: bool = False
+
         # Output specifications
         self.output_files: Dict[str, List[str]] = (
             output_files if output_files is not None else {"omari.csv": ["Time", "Pu239"]}
@@ -602,6 +607,26 @@ class Case(CoupledUnit):
         except Exception:  # noqa: BLE001
             return redact_sensitive(" ".join(str(part) for part in cmd))
 
+    def cancel(self) -> None:
+        """Request cooperative cancellation of this case's command sequence.
+
+        Sticky: once requested, remaining commands and retry attempts are
+        skipped at the next command/attempt boundary (the running command is
+        not killed). Cases cancelled before any command runs record a
+        FAILED history entry with reason ``cancelled``.
+        """
+        self.cancelled = True
+        logger.warning(f"Case '{self.name}' (case_id={self.case_id}) cancellation requested")
+
+    def _cancelled_marker(self) -> bool:
+        """Mark the case failed with a cancellation reason if a cancel was
+        requested; returns True when execution should stop."""
+        if not getattr(self, "cancelled", False):
+            return False
+        self._case_failed = True
+        self.failure = self.failure or "cancelled (user interruption)"
+        return True
+
     def _execute(self) -> List[int]:
         exit_codes = []
         command_logger = CaseLoggerAdapter(
@@ -615,8 +640,8 @@ class Case(CoupledUnit):
 
         try:
             for cmd in self.exe_cmd:
-                if getattr(self, "_case_failed", False):
-                    break  # continue policy: stop after a recorded failure
+                if getattr(self, "_case_failed", False) or self._cancelled_marker():
+                    break  # continue policy: stop after a recorded failure/cancel
                 timeout = getattr(self, "timeout", None)
                 log_file = getattr(self, "log_file", None)
                 if log_file and not os.path.isabs(log_file):
@@ -626,6 +651,8 @@ class Case(CoupledUnit):
                     self.max_attempts if self.command_failure_policy == "retry" else 1
                 )
                 while attempts_left > 0:
+                    if self._cancelled_marker():
+                        break  # cancellation requested: skip this and later attempts
                     attempts_left -= 1
 
                     # Record execution details

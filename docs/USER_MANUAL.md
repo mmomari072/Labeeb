@@ -205,6 +205,30 @@ db2.add_sampled_attribute(
 semi-definite, `|rho| <= 1`) and `truncated_normal_sample` supports one-sided
 bounds via `low=`/`high=` alone; both accept `seed=` for reproducibility.
 
+### Cancelling Runs & Versioned Records (V2-EXEC)
+Cooperative cancellation and schema-stamped results/events:
+
+```python
+# 1) Cancel a case between commands (sticky; the running command is not killed)
+runner.cancel()          # remaining commands/retries are skipped (FAILED,
+                         # reason "cancelled (user interruption)")
+
+# 2) Versioned records: readers accept legacy exports and stamp writes
+from labeeb.results import RESULT_SCHEMA_VERSION, CaseResult
+from labeeb.execution import EVENT_SCHEMA_VERSION, ExecutionEvent
+result = CaseResult(case_id=0, parameters={}, status="OK", exit_code=0, duration_seconds=0.1)
+record = result.to_record()              # {"schema_version": "1", ...}
+result = CaseResult.from_record(record)  # tolerant of version-less records
+legacy_event = {"command": "true", "cwd": ".", "status": "completed",
+                "returncode": 0, "duration_seconds": 0.1,
+                "started_at": "t", "ended_at": "t"}
+ev = ExecutionEvent.from_dict(legacy_event)  # defaults schema_version "1"
+assert RESULT_SCHEMA_VERSION == EVENT_SCHEMA_VERSION == "1"
+```
+
+Unsupported schema versions raise `ValueError` on read; mid-command process
+kill is reserved for the future scheduler/container adapters.
+
 ### Advanced Sampling: Latin Hypercube & Halton Sequences
 Generate space-filling low-discrepancy sequences for uncertainty quantification using the `size` parameter:
 

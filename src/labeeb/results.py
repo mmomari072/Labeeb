@@ -8,6 +8,11 @@ from typing import Any, Dict, Iterable, List, Optional, Union
 
 import pandas as pd
 
+RESULT_SCHEMA_VERSION = "1"
+"""Version of the :class:`CaseResult` record schema (V2-EXEC-01)."""
+
+_SUPPORTED_RESULT_SCHEMA_VERSIONS = frozenset({RESULT_SCHEMA_VERSION})
+
 
 @dataclass
 class CaseResult:
@@ -21,17 +26,24 @@ class CaseResult:
     artifacts: Dict[str, str] = field(default_factory=dict)
     metrics: Dict[str, Any] = field(default_factory=dict)
     failure: Optional[str] = None
+    schema_version: str = RESULT_SCHEMA_VERSION
 
     def __post_init__(self) -> None:
         if self.case_id < 0:
             raise ValueError("case_id must be non-negative")
         if not self.status:
             raise ValueError("status must not be empty")
+        if self.schema_version not in _SUPPORTED_RESULT_SCHEMA_VERSIONS:
+            raise ValueError(
+                f"Unsupported CaseResult schema version {self.schema_version!r}; "
+                f"supported: {sorted(_SUPPORTED_RESULT_SCHEMA_VERSIONS)}"
+            )
         self.status = self.status.upper()
 
     def to_record(self) -> Dict[str, Any]:
         """Return the complete structured record for this case."""
         return {
+            "schema_version": self.schema_version,
             "case_id": self.case_id,
             "parameters": dict(self.parameters),
             "status": self.status,
@@ -44,7 +56,12 @@ class CaseResult:
 
     @classmethod
     def from_record(cls, record: Dict[str, Any]) -> "CaseResult":
-        """Rebuild a result from a persisted or exported record."""
+        """Rebuild a result from a persisted or exported record.
+
+        Legacy records without ``schema_version`` are accepted as version
+        ``"1"``; unsupported versions raise :class:`ValueError`.
+        """
+        version = record.get("schema_version", RESULT_SCHEMA_VERSION)
         return cls(
             case_id=int(record["case_id"]),
             parameters=dict(record.get("parameters", {})),
@@ -54,6 +71,7 @@ class CaseResult:
             artifacts=dict(record.get("artifacts", {})),
             metrics=dict(record.get("metrics", {})),
             failure=record.get("failure"),
+            schema_version=str(version),
         )
 
 

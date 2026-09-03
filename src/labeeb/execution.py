@@ -15,6 +15,15 @@ from .logging_config import redact_sensitive
 
 logger = logging.getLogger(__name__)
 
+EVENT_SCHEMA_VERSION = "1"
+"""Version of the :class:`ExecutionEvent` record schema (V2-EXEC-01).
+
+Readers must accept records without ``schema_version`` (v1-era exports) and
+treat them as version ``"1"``; writers always stamp the field.
+"""
+
+_SUPPORTED_EVENT_SCHEMA_VERSIONS = frozenset({EVENT_SCHEMA_VERSION})
+
 
 @dataclass
 class ExecutionEvent:
@@ -35,15 +44,28 @@ class ExecutionEvent:
     event_type: str = "command"
     message: Optional[str] = None
     timed_out: bool = False
+    schema_version: str = EVENT_SCHEMA_VERSION
 
     def to_dict(self) -> Dict[str, Any]:
-        """Return a JSON-compatible event mapping."""
+        """Return a JSON-compatible event mapping (schema-stamped)."""
         return asdict(self)
 
     @classmethod
     def from_dict(cls, record: Dict[str, Any]) -> "ExecutionEvent":
-        """Rebuild an event from a JSON-compatible mapping."""
-        return cls(**record)
+        """Rebuild an event from a JSON-compatible mapping.
+
+        Legacy records without ``schema_version`` are accepted as version
+        ``"1"``; unsupported versions raise :class:`ValueError`.
+        """
+        payload = dict(record)
+        payload.setdefault("schema_version", EVENT_SCHEMA_VERSION)
+        if payload["schema_version"] not in _SUPPORTED_EVENT_SCHEMA_VERSIONS:
+            raise ValueError(
+                f"Unsupported execution-event schema version "
+                f"{payload['schema_version']!r}; supported: "
+                f"{sorted(_SUPPORTED_EVENT_SCHEMA_VERSIONS)}"
+            )
+        return cls(**payload)
 
 
 @dataclass
