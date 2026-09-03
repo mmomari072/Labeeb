@@ -88,6 +88,7 @@ def test_case_launcher():
             c.main_dir = tmpdir
             c.run_case_main_dir = "runs"
             c.exe_cmd = ["echo Val > log.csv", "echo 42.0 >> log.csv"]  # Mock output file creation
+            c.shell = True  # legacy redirection strings require explicit shell opt-in
             c.run_type = "new"
 
             c.launch()
@@ -129,6 +130,7 @@ def test_case_harvester_extracts_named_metric():
         c.run_case_main_dir = "runs"
         c.run_type = "new"
         c.exe_cmd = ["echo 'residual = 1.2e-3' > solver.log"]
+        c.shell = True  # legacy redirection string requires explicit shell opt-in
         c.add_harvester("residual", r"residual = ([0-9.e-]+)", "solver.log")
 
         c.launch()
@@ -219,6 +221,7 @@ def test_case_parallel_log_timeout():
                 "echo '42' >> out.csv",
                 "sleep 0.01"
             ]
+            c.shell = True  # legacy redirection strings require explicit shell opt-in
 
             # Log redirection config
             c.log_file = "run.log"

@@ -261,6 +261,7 @@ class Campaign:
         if "log_file" in execution:
             case.log_file = execution["log_file"]
         case.capture_output = bool(execution.get("capture_output", False))
+        case.shell = bool(execution.get("shell", False))
         if "command_failure_policy" in execution:
             case.command_failure_policy = execution["command_failure_policy"]
         if "harvest_failure_policy" in execution:

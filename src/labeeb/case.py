@@ -5,6 +5,7 @@ input processing, simulation runs, and parsing outputs.
 
 import logging
 import os
+import shlex
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
@@ -204,6 +205,10 @@ class Case(CoupledUnit):
         # are read and before results are finalized (LAB-POST-OUTPUT-HOOKS-01).
         self.post_output_hooks: List[Tuple[str, Callable[..., Any]]] = []
         self.post_output_hook_failures: List[str] = []
+
+        # Secure subprocess execution: None/False -> argv-style (no shell);
+        # True -> explicit shell semantics for legacy command strings.
+        self.shell: Optional[bool] = None
 
         # Output specifications
         self.output_files: Dict[str, List[str]] = (
@@ -588,6 +593,15 @@ class Case(CoupledUnit):
         stop_file = os_ops.set_fullpath(self.main_dir, self.run_case_main_dir, "STOP_ALL")
         return os_ops.isfile(stop_file)
 
+    def _redact_cmd(self, cmd: Any) -> str:
+        """Redact a command for logs/errors; argv lists are joined first."""
+        if isinstance(cmd, str):
+            return redact_sensitive(cmd)
+        try:
+            return redact_sensitive(shlex.join(str(part) for part in cmd))
+        except Exception:  # noqa: BLE001
+            return redact_sensitive(" ".join(str(part) for part in cmd))
+
     def _execute(self) -> List[int]:
         exit_codes = []
         command_logger = CaseLoggerAdapter(
@@ -618,9 +632,17 @@ class Case(CoupledUnit):
                     t_start = time.time()
                     t_stamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-                    result = self.execution_backend.run(
-                        cmd, cwd=self.current_case_dir, timeout=timeout, log_file=log_file
-                    )
+                    if isinstance(self.execution_backend, LocalExecutionBackend):
+                        # Secure-execution opt-in applies to the local backend.
+                        result = self.execution_backend.run(
+                            cmd, cwd=self.current_case_dir, timeout=timeout,
+                            log_file=log_file, shell=self.shell,
+                        )
+                    else:
+                        # Injected/custom backends keep their own contract.
+                        result = self.execution_backend.run(
+                            cmd, cwd=self.current_case_dir, timeout=timeout, log_file=log_file
+                        )
                     if getattr(self, "capture_output", False) and self.current_case_dir:
                         if result.stdout:
                             with open(os.path.join(self.current_case_dir, "stdout.log"), "a", encoding="utf-8") as stream:
@@ -641,12 +663,12 @@ class Case(CoupledUnit):
                         logger.warning(
                             "Simulation command returned exit status %s (%s) for command '%s'; "
                             "%s retr%s remaining",
-                            status_str, code, redact_sensitive(cmd), attempts_left,
+                            status_str, code, self._redact_cmd(cmd), attempts_left,
                             "y" if attempts_left == 1 else "ies",
                         )
                         self.execution_history.append({
                             "case_id": self.case_id,
-                            "command": redact_sensitive(cmd),
+                            "command": self._redact_cmd(cmd),
                             "exit_code": code,
                             "status": status_str,
                             "timestamp": t_stamp,
@@ -660,7 +682,7 @@ class Case(CoupledUnit):
 
                     self.execution_history.append({
                         "case_id": self.case_id,
-                        "command": redact_sensitive(cmd),
+                        "command": self._redact_cmd(cmd),
                         "exit_code": code,
                         "status": status_str,
                         "timestamp": t_stamp,
@@ -671,17 +693,17 @@ class Case(CoupledUnit):
                         self.execution_history[-1]["execution_event"] = result.event.to_dict()
 
                     if code != 0:
-                        logger.error(f"Simulation command returned exit status {status_str} ({code}) for command '{redact_sensitive(cmd)}'")
+                        logger.error(f"Simulation command returned exit status {status_str} ({code}) for command '{self._redact_cmd(cmd)}'")
                         if self.command_failure_policy == "continue":
                             self._mark_case_failed(
                                 f"Simulation command failed for case {self.case_id}: "
-                                f"'{redact_sensitive(cmd)}' ({status_str}, exit code {code})"
+                                f"'{self._redact_cmd(cmd)}' ({status_str}, exit code {code})"
                             )
                             # Record the failure in the last history entry's message
                             self.execution_history[-1]["message"] = self.failure
                             break  # skip remaining commands for this case
                         raise CaseExecutionError(
-                            f"Simulation command failed for case {self.case_id}: '{redact_sensitive(cmd)}' ({status_str}, exit code {code})"
+                            f"Simulation command failed for case {self.case_id}: '{self._redact_cmd(cmd)}' ({status_str}, exit code {code})"
                         )
                     exit_codes.append(code)
                     break

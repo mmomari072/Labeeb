@@ -410,6 +410,34 @@ Contract:
   its own row (hooks must not share mutable state across calls); hook-created
   columns merge back in `case_id` order like regular outputs.
 
+##### Secure Command Execution
+Commands are executed WITHOUT a shell by default (argv-style, the safe
+default):
+
+```python
+# Safe default: argv lists run with no shell at all.
+case.exe_cmd = [["python", "deck_solver.py", "--mode", "steady"],
+                ["mcnp", "input.i"]]
+
+# Plain strings are parsed argv-safe too (shlex): quotes are honored, but
+# shell metacharacters (>, |, &&, ;) are NOT interpreted.
+case.exe_cmd = ["python -c \"print(1)\""]   # works, argv-style
+```
+
+Legacy shell command strings (redirections, pipes, chaining) are preserved
+via an explicit opt-in — per `Case`, per backend, or per manifest:
+
+```python
+case.exe_cmd = ["echo 600.0 >> data.csv"]   # needs shell semantics
+case.shell = True                           # explicit opt-in
+```
+
+Campaign manifests accept `execution.shell: true`; the backend equivalent is
+`LocalExecutionBackend(default_shell=True)` or the per-call `shell=True`
+argument. Timeout (`-999`, `timed_out=True`), launch failure (`-1`, e.g.
+missing executable — recorded FAILED, never raised from the backend), logging
+and redaction semantics are unchanged for both forms.
+
 ##### Post-Output Feedback & Sequential Adaptive Optimization
 
 Post-output hooks can perform **adaptive feedback loops** — deriving output metrics from current harvested results and updating parameter values in `case.database` for subsequent rows before those future cases execute.

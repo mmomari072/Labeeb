@@ -214,6 +214,7 @@ def test_section_6_post_output_feedback_adaptive_loop(tmp_path):
     case.run_case_main_dir = "runs"
     case.run_type = "new"
     case.exe_cmd = ["echo peak_temp > data.csv", "echo 600.0 >> data.csv"]
+    case.shell = True  # legacy redirection strings require explicit shell opt-in
 
     def adaptive_feedback_hook(outputs, case_obj):
         peak_temp = outputs["peak_temp"][-1][0] if isinstance(outputs["peak_temp"][-1], list) else outputs["peak_temp"][-1]

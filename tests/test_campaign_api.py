@@ -84,6 +84,7 @@ def test_campaign_logs_lifecycle_and_captures_output_artifacts(tmp_path: Path) -
                 "run_dir": str(tmp_path / "runs"),
                 "events_file": str(events_path),
                 "capture_output": True,
+                "shell": True,  # legacy shell metacharacters require explicit opt-in
             },
         }
     )

@@ -100,11 +100,18 @@ Contract to implement a scheduler/remote backend:
 
 ```python
 class ExecutionBackend:                      # interface
-    def run(self, command, cwd, timeout=None, log_file=None) -> ExecutionResult: ...
+    def run(self, command, cwd, timeout=None, log_file=None, shell=None) -> ExecutionResult: ...
 
 class ExecutionResult:  returncode, stdout, stderr, duration_seconds,
                         timed_out: bool, event: ExecutionEvent | None
 ```
+
+`command` is a string OR an argv sequence. The local backend is
+secure-by-default: argv sequences run with `shell=False`; plain strings are
+`shlex.split` into argv unless `shell=True` is explicit (per call, via
+`LocalExecutionBackend(default_shell=True)`, `Case.shell`, or the manifest key
+`execution.shell`). Injected/custom backends keep their own contract (Case
+only forwards `shell=` to the local backend).
 
 `LocalExecutionBackend` also honors `set_logger(command_logger)` so case
 context (`case_id`/`unit`/`attempt`) flows into every `ExecutionEvent` and log

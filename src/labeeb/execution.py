@@ -3,12 +3,13 @@
 import json
 import logging
 import os
+import shlex
 import subprocess
 import time
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Union
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Union
 
 from .logging_config import redact_sensitive
 
@@ -69,47 +70,90 @@ class ExecutionBackend:
 
     def run(
         self,
-        command: str,
+        command: Union[str, Sequence[str]],
         cwd: Union[str, Path],
         timeout: Optional[float] = None,
         log_file: Optional[Union[str, Path]] = None,
+        shell: Optional[bool] = None,
     ) -> ExecutionResult:
         raise NotImplementedError
 
 
 class LocalExecutionBackend(ExecutionBackend):
-    """Run a command as a local shell process."""
+    """Run a command locally.
 
-    def __init__(self, command_logger: Optional[logging.Logger] = None) -> None:
+    Secure-by-default execution model:
+      * a sequence (argv list) is executed WITHOUT a shell (``shell=False``);
+      * a plain string is parsed with :func:`shlex.split` and executed as an
+        argv list (no shell) UNLESS ``shell=True`` is given explicitly (either
+        per call or as the backend's ``default_shell``) — legacy shell command
+        strings (redirections, pipes, ``&&``, ``;``) must opt in to shell
+        semantics explicitly.
+    Timeout (-999/TIMEOUT), launch-failure (-1/FAILED, e.g. missing
+    executable), logging and redaction semantics are unchanged.
+    """
+
+    def __init__(
+        self,
+        command_logger: Optional[logging.Logger] = None,
+        *,
+        default_shell: bool = False,
+    ) -> None:
         self.command_logger = command_logger or logger
+        self.default_shell: bool = default_shell
 
     def set_logger(self, command_logger: logging.Logger) -> "LocalExecutionBackend":
         """Set the logger used for command lifecycle records."""
         self.command_logger = command_logger
         return self
 
+    @staticmethod
+    def _display_command(command: Union[str, Sequence[str]]) -> str:
+        """Normalized display form for events/logs (shell-joined for argv)."""
+        if isinstance(command, str):
+            return command
+        try:
+            return shlex.join(str(part) for part in command)
+        except Exception:  # noqa: BLE001 - never break on display only
+            return " ".join(str(part) for part in command)
+
+    def _resolve_invocation(
+        self, command: Union[str, Sequence[str]], shell: Optional[bool]
+    ) -> "tuple[Union[str, List[str]], bool]":
+        """Map (command, shell) onto an argv list or a shell string invocation."""
+        if not isinstance(command, str):
+            # argv lists never need a shell, regardless of any opt-in flag
+            return [str(part) for part in command], False
+        use_shell = self.default_shell if shell is None else shell
+        if use_shell:
+            return command, True
+        return shlex.split(command), False
+
     def run(
         self,
-        command: str,
+        command: Union[str, Sequence[str]],
         cwd: Union[str, Path],
         timeout: Optional[float] = None,
         log_file: Optional[Union[str, Path]] = None,
+        shell: Optional[bool] = None,
     ) -> ExecutionResult:
         started = time.monotonic()
         started_at = datetime.now(timezone.utc).isoformat()
         stream = None
-        log_command = redact_sensitive(command)
+        display = self._display_command(command)
+        log_command = redact_sensitive(display)
         self.command_logger.info("Starting command %r in %s", log_command, cwd)
         try:
+            invoke, use_shell = self._resolve_invocation(command, shell)
             if log_file is not None:
                 stream = open(log_file, "a", encoding="utf-8")
                 completed = subprocess.run(
-                    command, shell=True, cwd=str(cwd), stdout=stream, stderr=stream, timeout=timeout
+                    invoke, shell=use_shell, cwd=str(cwd), stdout=stream, stderr=stream, timeout=timeout
                 )
                 stdout = stderr = ""
             else:
                 completed = subprocess.run(
-                    command, shell=True, cwd=str(cwd), capture_output=True, text=True, timeout=timeout
+                    invoke, shell=use_shell, cwd=str(cwd), capture_output=True, text=True, timeout=timeout
                 )
                 stdout, stderr = completed.stdout or "", completed.stderr or ""
             result = ExecutionResult(
@@ -120,9 +164,9 @@ class LocalExecutionBackend(ExecutionBackend):
             )
             status = "SUCCESS" if result.returncode == 0 else "FAILED"
             result.event = self._event(
-                command, cwd, result, started_at,
+                display, cwd, result, started_at,
                 status=status,
-                message=self._failure_context(command, result),
+                message=self._failure_context(display, result),
             )
             self.command_logger.info(
                 "Command %r completed with exit code %s in %.3fs",
@@ -140,7 +184,7 @@ class LocalExecutionBackend(ExecutionBackend):
             if stream is not None:
                 stream.write(f"\n[ERROR] Command timed out after {timeout} seconds.\n")
             event = self._event(
-                command,
+                display,
                 cwd,
                 ExecutionResult(-999, str(exc.stdout or ""), str(exc.stderr or ""), duration, True),
                 started_at,
@@ -157,7 +201,9 @@ class LocalExecutionBackend(ExecutionBackend):
             )
             self._emit_structured(event)
             return result
-        except OSError as exc:
+        except (OSError, ValueError) as exc:
+            # OSError: launch failure (missing executable, ...)
+            # ValueError: shlex could not parse a quoted command string
             self.command_logger.error("Command %r could not be executed: %s", log_command, exc)
             result = ExecutionResult(
                 returncode=-1,
@@ -165,7 +211,7 @@ class LocalExecutionBackend(ExecutionBackend):
                 duration_seconds=time.monotonic() - started,
             )
             result.event = self._event(
-                command, cwd, result, started_at, status="FAILED", message=str(exc)
+                display, cwd, result, started_at, status="FAILED", message=str(exc)
             )
             self._emit_structured(result.event)
             return result

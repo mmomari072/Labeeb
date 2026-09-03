@@ -94,6 +94,7 @@ def test_case_integration_with_typed_harvesters(tmp_path: Path):
     case.run_case_main_dir = "runs"
     case.run_type = "new"
     case.exe_cmd = ['echo "residual = 5.0e-4" > solver.log && echo \'{"keff": 1.005}\' > out.json']
+    case.shell = True  # legacy shell chaining requires explicit opt-in
 
     case.add_harvester(RegexHarvester("residual", "solver.log", r"residual = ([0-9.e-]+)", transform=float))
     case.add_harvester(JsonHarvester("keff", "out.json", "keff", transform=float))
@@ -111,6 +112,7 @@ def test_case_harvester_missing_field_fails_case_execution(tmp_path: Path):
     case.run_case_main_dir = "runs"
     case.run_type = "new"
     case.exe_cmd = ["echo 'no match' > solver.log"]
+    case.shell = True  # legacy redirection string requires explicit shell opt-in
 
     case.add_harvester(RegexHarvester("residual", "solver.log", r"residual = ([0-9.e-]+)"))
 
