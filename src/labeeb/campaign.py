@@ -8,7 +8,7 @@ import time
 from datetime import datetime, timezone
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, TYPE_CHECKING, Union
+from typing import Any, Dict, List, Optional, Sequence, TYPE_CHECKING, Tuple, Union
 
 from .exceptions import LabeebError
 
