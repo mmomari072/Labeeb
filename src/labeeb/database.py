@@ -739,6 +739,12 @@ class Database(dict):
             else:
                 replicated_oat_indices = oat_indices
 
+        # Add row ID first if include_indices (will appear at beginning)
+        if include_indices:
+            id_values = list(range(id_start, id_start + row_count))
+            self['__id__'] = Attribute(name="__id__", data=id_values,
+                                       description=f"Row ID ({id_start}-indexed)", Type=int)
+
         # Handle index placement
         if include_indices and index_placement == 'interleaved':
             # Interleave: attribute → __attr_index__ → next attribute
@@ -760,24 +766,11 @@ class Database(dict):
                 self.add_attribute(Attribute(name=attr.name, data=generated[attr.name],
                                              description=attr.description, Type=attr.type, unit=attr.unit))
 
-        # Add row ID column (__id__) first if include_indices
-        if include_indices:
-            id_values = list(range(id_start, id_start + row_count))
-            # Reorder dict: __id__ first, then other attributes
-            id_attr = Attribute(name="__id__", data=id_values,
-                               description=f"Row ID ({id_start}-indexed)", Type=int)
-            new_dict = {'__id__': id_attr}
-            for key, val in self.items():
-                if key != '__id__':
-                    new_dict[key] = val
-            self.clear()
-            self.update(new_dict)
-
-        # Add OAT index columns at the end if not interleaved
-        if include_indices and index_placement != 'interleaved':
-            for oat_col_name, indices in replicated_oat_indices.items():
-                self.add_attribute(Attribute(name=oat_col_name, data=indices,
-                                             description=f"OAT index for {oat_col_name[2:-7]} (0-indexed)", Type=int))
+            # Add OAT index columns at the end if not interleaved
+            if include_indices:
+                for oat_col_name, indices in replicated_oat_indices.items():
+                    self.add_attribute(Attribute(name=oat_col_name, data=indices,
+                                                 description=f"OAT index for {oat_col_name[2:-7]} (0-indexed)", Type=int))
 
         # Resolve dependencies before registering with the existing reactive system.
         base_names = list(generated)
