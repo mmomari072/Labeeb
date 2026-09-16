@@ -729,11 +729,16 @@ class Database(dict):
         self.add_attribute(Attribute(name="__id__", data=list(range(1, row_count + 1)),
                                      description="Row ID (1-indexed)", Type=int))
 
-        # Add OAT index columns (1-indexed for readability)
-        for oat_col_name, indices in oat_indices.items():
-            one_indexed = [idx + 1 for idx in indices]
-            self.add_attribute(Attribute(name=oat_col_name, data=one_indexed,
-                                         description=f"OAT index for {oat_col_name[2:-7]}", Type=int))
+        # Add OAT index columns (0-indexed, replicated for each random replicate)
+        if oat_indices and repeats > 1:
+            for oat_col_name, base_indices in oat_indices.items():
+                replicated_indices = [idx for idx in base_indices for _ in range(repeats)]
+                self.add_attribute(Attribute(name=oat_col_name, data=replicated_indices,
+                                             description=f"OAT index for {oat_col_name[2:-7]} (0-indexed)", Type=int))
+        else:
+            for oat_col_name, indices in oat_indices.items():
+                self.add_attribute(Attribute(name=oat_col_name, data=indices,
+                                             description=f"OAT index for {oat_col_name[2:-7]} (0-indexed)", Type=int))
 
         # Resolve dependencies before registering with the existing reactive system.
         base_names = list(generated)
