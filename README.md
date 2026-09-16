@@ -268,6 +268,62 @@ db.to_parquet("results.parquet")
 | `db["col"]` | Attribute | Single column |
 | `db.plot(x, y)` | Matplotlib plot | Visualization |
 
+#### Sensitivity Analysis with Feedback Loops
+
+Run iterative sensitivity studies where post-execution hooks update parameters based on results:
+
+```python
+from labeeb import SensitivityAnalysisLoop
+
+# Define how to update parameters based on results
+def update_parameters(state):
+    """State contains: results (DataFrame), iteration, database, all_results"""
+    results = state["results"]
+    
+    # Find best result
+    best_idx = results["KEFF"].idxmax()
+    best = results.loc[best_idx]
+    
+    # Return parameter updates for next iteration
+    return {"RHO": best["RHO"], "WF": best["WF"]}
+
+# Optional: convergence check
+def check_convergence(all_results):
+    if len(all_results) < 2:
+        return False
+    improvement = all_results[-1]["KEFF"].max() - all_results[-2]["KEFF"].max()
+    return improvement < 0.001  # Stop if improvement < 0.001
+
+# Create initial sensitivity design
+design_db = Database(
+    attributes=[
+        Attribute("RHO", sampling=OAT([17.0, 19.0, 21.0])),
+        Attribute("WF", sampling=OAT([0.015, 0.020, 0.025])),
+    ],
+    n=1,
+    seed=42,
+)
+
+# Run sensitivity analysis loop
+loop = SensitivityAnalysisLoop(case_runner, design_db, max_iterations=3)
+results = loop.run(
+    update_function=update_parameters,
+    convergence_function=check_convergence,  # Optional
+)
+
+# Analyze results
+combined = loop.get_combined_results()
+print(combined.to_string())
+loop.export_all_results("results.csv")
+```
+
+**Features:**
+- Execute any design (OAT, FOAT, LHS, etc.)
+- Post-function reads results and updates parameters
+- Track all results across iterations
+- Optional convergence checking
+- Full control over update logic
+
 ### B. Sampler & Sweeps (`labeeb.sampler`)
 Generate design matrices and parameters using grid sweeps or statistical distributions.
 

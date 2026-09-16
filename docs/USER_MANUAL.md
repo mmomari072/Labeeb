@@ -317,6 +317,130 @@ db = Database(
 )
 ```
 
+### Iterative Sensitivity Analysis with Feedback Loops
+
+For iterative parameter refinement based on simulation results, use `SensitivityAnalysisLoop`:
+
+```python
+from labeeb import SensitivityAnalysisLoop, Database, Attribute, OAT
+
+# 1. Define update function (called after each iteration)
+def update_parameters(state):
+    """
+    Analyze results and determine parameter updates.
+    
+    Args:
+        state: Dict with keys:
+            - results: DataFrame with current iteration results
+            - iteration: Current iteration number
+            - database: Current database
+            - all_results: List of all previous result DataFrames
+    
+    Returns:
+        Dict mapping parameter names to new values for next iteration
+    """
+    results = state["results"]
+    
+    # Find best result
+    best_idx = results["KEFF"].idxmax()
+    best_row = results.loc[best_idx]
+    
+    # Return updates
+    return {
+        "RHO": best_row["RHO"],
+        "WF": best_row["WF"],
+    }
+
+# 2. Optional: Define convergence check
+def has_converged(all_results):
+    """
+    Check if we should stop iterating.
+    
+    Args:
+        all_results: List of result DataFrames from all iterations
+    
+    Returns:
+        True to stop, False to continue
+    """
+    if len(all_results) < 2:
+        return False
+    
+    improvement = all_results[-1]["KEFF"].max() - all_results[-2]["KEFF"].max()
+    return improvement < 0.001  # Stop if improvement is small
+
+# 3. Create initial sensitivity design
+design_db = Database(
+    attributes=[
+        Attribute("RHO", sampling=OAT([17.0, 19.0, 21.0])),
+        Attribute("WF", sampling=OAT([0.015, 0.020, 0.025])),
+    ],
+    n=1,
+    seed=42,
+)
+
+# 4. Run sensitivity loop
+loop = SensitivityAnalysisLoop(
+    case_runner=case_runner,
+    initial_database=design_db,
+    max_iterations=3,
+)
+
+results = loop.run(
+    update_function=update_parameters,
+    convergence_function=has_converged,  # Optional
+)
+
+# 5. Analyze results
+combined_results = loop.get_combined_results()
+print(combined_results.to_string())
+
+# Get results from specific iteration
+iter_2_results = loop.get_iteration_results(1)
+
+# Export all results
+loop.export_all_results("sensitivity_results.csv")
+```
+
+**Key Features:**
+- Run any design matrix (OAT, FOAT, LHS, random, etc.)
+- Full control over parameter updates via `update_function`
+- Track all results across iterations
+- Optional convergence checking
+- Export results from all iterations
+- Simple, direct, and flexible
+
+**Common Patterns:**
+
+```python
+# Pattern 1: Hill climbing (always move toward best)
+def hill_climb(state):
+    results = state["results"]
+    best_idx = results["OBJECTIVE"].idxmax()
+    return {param: results.loc[best_idx, param] for param in ["RHO", "WF"]}
+
+# Pattern 2: Random exploration around best
+import numpy as np
+def explore_around_best(state):
+    results = state["results"]
+    best_idx = results["OBJECTIVE"].idxmax()
+    best = results.loc[best_idx]
+    
+    return {
+        "RHO": best["RHO"] + np.random.normal(0, 1.0),
+        "WF": best["WF"] + np.random.normal(0, 0.001),
+    }
+
+# Pattern 3: Weighted update based on multiple outputs
+def weighted_update(state):
+    results = state["results"]
+    
+    # Compute weighted score
+    results["score"] = 0.7 * results["KEFF"] + 0.3 * (1 - results["POWER"]/1000)
+    
+    best_idx = results["score"].idxmax()
+    return {param: results.loc[best_idx, param] for param in ["RHO", "WF"]}
+```
+
 ---
 
 ## 4. Parameter Sampling & Design Matrices
