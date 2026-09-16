@@ -11,7 +11,7 @@ logging.getLogger("labeeb").addHandler(logging.NullHandler())
 from .case import Case, Flag, FlagsMap
 from .campaign import Campaign, CampaignError, CampaignManifest, load_manifest
 from .coupler import Coupler
-from .database import Attribute, Database
+from .database import Attribute, Constant, Database, Derived, Normal, OAT, Uniform
 from .exceptions import (
     BackupError,
     CaseExecutionError,
@@ -111,6 +111,7 @@ __all__ = [
     "latin_hypercube_sample", "load_analysis_bundle", "load_manifest", "morris_screening", "normal_sample", "product",
     "restore_backup", "run_extractor", "sample", "sobol_indices", "uniform_sample", "wilks_sample_size", "SurrogateModel", "optimize_scipy", "optimize_optuna", "rank_candidates",
     "validate_backup", "write_html_report", "print_banner", "CaseLoggerAdapter", "configure_logging",
+    "Constant", "Derived", "Normal", "OAT", "Uniform",
     "correlated_normal_sample", "truncated_normal_sample",
 ]
 

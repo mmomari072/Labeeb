@@ -62,9 +62,11 @@ Labeeb/
 * **`Attribute`**:
   * Wraps a 1D Python list/numpy array.
   * Encapsulates `name` (str) and `unit` (Optional[str]).
+  * Accepts `sampling=` specifications (`Normal`, `Uniform`, `OAT`, `Derived`, or `Constant`) instead of `data` for mixed-design database construction.
   * Implements rich comparison (`==`, `!=`, `<`, `<=`, `>`, `>=`) and arithmetic (`+`, `-`, `*`, `/`, `**`, `%`, `//`) operations yielding new `Attribute` instances.
 * **`Database`**:
   * Dictionary-backed column store: `{attr_name: Attribute}`.
+  * `Database(attributes=[...], n=..., seed=...)` constructs aligned OAT/random/derived/constant columns in one step; with OAT, `n` is repetitions per OAT design row.
   * Ensures all columns maintain consistent row lengths.
   * Methods: `add_attribute()`, `get_row(index)`, `set_row(index, values)`, `to_dataframe()`, `export_to_file()`, `import_from_file()`.
   * Formats supported: `.csv`, `.xlsx`, `.parquet`, `.json`, `.pkl`.

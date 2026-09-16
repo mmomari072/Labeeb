@@ -3,7 +3,7 @@ import os
 import tempfile
 import pytest
 import numpy as np
-from labeeb.database import Attribute, Database
+from labeeb.database import Attribute, Constant, Database, Derived, Normal, OAT, Uniform
 from labeeb.exceptions import DatabaseError
 
 
@@ -69,6 +69,61 @@ def test_database_accepts_array_returning_sampler():
     db.add_sampled_attribute("x", lambda size: np.arange(size), size=3)
 
     assert list(db["x"]) == [0.0, 1.0, 2.0]
+
+
+def test_database_constructs_mixed_attributes_from_sampling_plan():
+    db = Database(
+        attributes=[
+            Attribute("x", sampling=Normal(0, 1)),
+            Attribute("y", sampling=Uniform(0, 1)),
+            Attribute("z", sampling=OAT([1, 2])),
+            Attribute("kk", sampling=OAT([3, 6])),
+            Attribute("w", sampling=Derived(lambda row: row["x"] + row["z"])),
+            Attribute("k", sampling=Constant(5)),
+        ],
+        n=2,
+        seed=12,
+    )
+
+    assert len(db) == 6
+    assert list(zip(db["z"], db["kk"])) == [
+        (1.0, 3.0), (1.0, 3.0), (2.0, 3.0),
+        (2.0, 3.0), (1.0, 6.0), (1.0, 6.0),
+    ]
+    assert list(db["w"]) == pytest.approx([x + z for x, z in zip(db["x"], db["z"])])
+    assert list(db["k"]) == [5.0] * 6
+
+
+def test_attribute_accepts_sampling_instead_of_data():
+    attr = Attribute("x", sampling=OAT([1, 2, 3]))
+    assert attr.sampling == OAT([1, 2, 3])
+    assert attr == []
+
+
+def test_database_without_oat_uses_n_as_total_sample_size():
+    db = Database(attributes=[Attribute("x", sampling=Uniform(0, 1))], n=4, seed=3)
+
+    assert len(db) == 4
+    assert len(db["x"]) == 4
+
+
+def test_mixed_database_builtin_sampling_is_reproducible_with_seed():
+    attrs = [Attribute("x", sampling=Normal(2, 0.5)), Attribute("y", sampling=Uniform(0, 1))]
+
+    first = Database(attributes=attrs, n=5, seed=19)
+    second = Database(
+        attributes=[Attribute("x", sampling=Normal(2, 0.5)), Attribute("y", sampling=Uniform(0, 1))],
+        n=5,
+        seed=19,
+    )
+
+    assert list(first["x"]) == list(second["x"])
+    assert list(first["y"]) == list(second["y"])
+
+
+def test_attribute_rejects_data_and_sampling_together():
+    with pytest.raises(DatabaseError, match="both data and sampling"):
+        Attribute("x", data=[1], sampling=Constant(2))
 
 
 def test_database_get_row():

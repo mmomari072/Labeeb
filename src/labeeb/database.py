@@ -13,14 +13,64 @@ import logging
 import operator
 import os
 import pickle
+from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Sequence, Set, Tuple, Union
 
+import numpy as np
 import pandas as pd
 
-from .exceptions import DatabaseError
+from .exceptions import DatabaseError, SamplingError
+from .sampler import OATConstructor
 from .utils.file_io import evaluate_expression
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class Normal:
+    """Normal-distribution sampling specification for an ``Attribute``."""
+
+    mean: float
+    std: float
+
+    def draw(self, size: int, rng: Any) -> List[float]:
+        if self.std < 0:
+            raise SamplingError("Normal distribution standard deviation must be non-negative")
+        return rng.normal(self.mean, self.std, size).tolist()
+
+
+@dataclass(frozen=True)
+class Uniform:
+    """Uniform-distribution sampling specification for an ``Attribute``."""
+
+    low: float
+    high: float
+
+    def draw(self, size: int, rng: Any) -> List[float]:
+        if self.low > self.high:
+            raise SamplingError("Uniform distribution lower bound must not exceed upper bound")
+        return rng.uniform(self.low, self.high, size).tolist()
+
+
+@dataclass(frozen=True)
+class OAT:
+    """One-at-a-time values for an ``Attribute`` in a database design."""
+
+    values: Sequence[Any]
+
+
+@dataclass(frozen=True)
+class Derived:
+    """Row-wise derived-value function for an ``Attribute``."""
+
+    function: Callable[[Dict[str, Any]], Any]
+
+
+@dataclass(frozen=True)
+class Constant:
+    """Scalar constant repeated for every row of an ``Attribute``."""
+
+    value: Any
 
 
 def _extract_expression_dependencies(expr: str, available_columns: Sequence[str]) -> List[str]:
@@ -112,6 +162,7 @@ class Attribute(list):
         description: Optional[str] = None,
         Type: Optional[Callable[[Any], Any]] = float,
         unit: Optional[str] = None,
+        sampling: Optional[Any] = None,
         **kwargs: Any,
     ):
         """
@@ -129,6 +180,9 @@ class Attribute(list):
         self.description: Optional[str] = description
         self.type: Optional[Callable[[Any], Any]] = Type
         self.unit: Optional[str] = unit
+        if data is not None and sampling is not None:
+            raise DatabaseError(f"Attribute '{name}' cannot specify both data and sampling")
+        self.sampling: Optional[Any] = sampling
         self._fun_list: List[Callable[..., Any]] = []
         self.non_entered_datum_value: Any = None
         self.instance_type_check: bool = True
@@ -487,6 +541,9 @@ class Database(dict):
         data: Optional[Dict[str, List[Any]]] = None,
         description: Optional[str] = None,
         attr_list: Optional[List[str]] = None,
+        attributes: Optional[Sequence[Attribute]] = None,
+        n: Optional[int] = None,
+        seed: Optional[int] = None,
         **kwargs: Any,
     ):
         """
@@ -505,6 +562,11 @@ class Database(dict):
         self.auto_refresh: bool = False
         self.__selected_att__: List[str] = []
         self._derived_specs: Dict[str, Dict[str, Any]] = {}
+
+        if attributes is not None and data is not None:
+            raise DatabaseError("Specify either data or attributes when constructing a Database, not both")
+        if n is not None and (not isinstance(n, int) or isinstance(n, bool) or n < 1):
+            raise DatabaseError("Sample count n must be a positive integer")
 
         if data:
             for key, val in data.items():
@@ -531,6 +593,108 @@ class Database(dict):
                 logger.warning(f"Database config '{key}' is not supported")
 
         self.get = self.DataAccessor(self)
+
+        if attributes is not None:
+            self._construct_from_attributes(attributes, n=n, seed=seed)
+
+    def _construct_from_attributes(
+        self, attributes: Sequence[Attribute], *, n: Optional[int], seed: Optional[int]
+    ) -> None:
+        """Materialize attribute data and sampling specifications as aligned rows."""
+        attrs = list(attributes)
+        if any(not isinstance(attr, Attribute) for attr in attrs):
+            raise DatabaseError("attributes must contain only Attribute instances")
+        names = [attr.name for attr in attrs]
+        if len(names) != len(set(names)):
+            raise DatabaseError("Attribute names must be unique during database construction")
+
+        oat_attrs = [attr for attr in attrs if isinstance(attr.sampling, OAT)]
+        design: Dict[str, List[Any]] = {}
+        if oat_attrs:
+            constructor = OATConstructor()
+            constructor.add_case({attr.name: list(attr.sampling.values) for attr in oat_attrs})
+            design = constructor.construct()
+            design = {attr.name: design[attr.name] for attr in oat_attrs}
+            repeats = n if n is not None else 1
+            row_count = len(next(iter(design.values()))) * repeats
+        else:
+            row_count = n if n is not None else 1
+            repeats = 1
+
+        rng = np.random.default_rng(seed)
+        generated: Dict[str, List[Any]] = {}
+        deferred: List[Attribute] = []
+        for attr in attrs:
+            spec = attr.sampling
+            if isinstance(spec, Derived):
+                deferred.append(attr)
+                continue
+            if isinstance(spec, OAT):
+                values = [value for value in design[attr.name] for _ in range(repeats)]
+            elif isinstance(spec, Constant):
+                values = [spec.value] * row_count
+            elif isinstance(spec, Normal) or isinstance(spec, Uniform):
+                values = spec.draw(row_count, rng)
+            elif spec is not None:
+                try:
+                    if hasattr(spec, "get_random_sample"):
+                        values = spec.get_random_sample(row_count)
+                    elif callable(spec):
+                        values = spec(row_count)
+                    else:
+                        raise DatabaseError(
+                            f"Unsupported sampling specification for attribute '{attr.name}'"
+                        )
+                except Exception as exc:
+                    raise DatabaseError(f"Sampling attribute '{attr.name}' failed: {exc}") from exc
+                if hasattr(values, "tolist"):
+                    values = values.tolist()
+                if isinstance(values, (str, bytes)) or not isinstance(values, Sequence):
+                    values = [values]
+                values = list(values)
+                if len(values) != row_count:
+                    raise DatabaseError(
+                        f"Sampler for attribute '{attr.name}' returned {len(values)} values; "
+                        f"expected {row_count}"
+                    )
+            elif attr:
+                source = list(attr)
+                if len(source) == 1:
+                    values = source * row_count
+                elif len(source) == row_count:
+                    values = source
+                else:
+                    raise DatabaseError(
+                        f"Data for attribute '{attr.name}' has {len(source)} values; expected 1 or {row_count}"
+                    )
+            else:
+                raise DatabaseError(
+                    f"Attribute '{attr.name}' must provide data or a sampling specification"
+                )
+            generated[attr.name] = list(values)
+
+        # Derived attributes run after all sampled and constant values are available.
+        for attr in deferred:
+            if not callable(attr.sampling.function):
+                raise DatabaseError(f"Derived function for attribute '{attr.name}' must be callable")
+            try:
+                generated[attr.name] = [
+                    attr.sampling.function({key: values[row] for key, values in generated.items()})
+                    for row in range(row_count)
+                ]
+            except Exception as exc:
+                raise DatabaseError(f"Deriving attribute '{attr.name}' failed: {exc}") from exc
+
+        for attr in attrs:
+            self.add_attribute(
+                Attribute(
+                    name=attr.name,
+                    data=generated[attr.name],
+                    description=attr.description,
+                    Type=attr.type,
+                    unit=attr.unit,
+                )
+            )
 
     def validate(self) -> None:
         """Validate all Attribute columns inside the database."""

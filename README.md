@@ -137,6 +137,36 @@ db.export_to_file("data.csv")
 db.import_from_file("data.csv", option="new")
 ```
 
+#### Constructing mixed sampled databases
+
+An `Attribute` can be created with either explicit `data` or a `sampling`
+specification. Pass the attributes together to `Database` so it can build one
+aligned design. `n` is the total number of rows without OAT attributes, and the
+number of random replicates per OAT design row when OAT attributes are present.
+
+```python
+from labeeb import Attribute, Constant, Database, Derived, Normal, OAT, Uniform
+
+db = Database(
+    attributes=[
+        Attribute("x", sampling=Normal(mean=0, std=1)),
+        Attribute("y", sampling=Uniform(low=0, high=10)),
+        Attribute("z", sampling=OAT([1, 2, 3])),
+        Attribute("kk", sampling=OAT([3, 6])),
+        Attribute("w", sampling=Derived(lambda row: row["x"] + row["z"])),
+        Attribute("k", sampling=Constant(5)),
+    ],
+    n=10,
+    seed=42,
+)
+```
+
+Multiple OAT attributes use `OATConstructor` semantics: their first values form
+the baseline, then one attribute varies at a time. Here that produces four OAT
+rows; `n=10` yields 40 rows. Each random attribute is sampled for all 40 rows,
+then derived attributes are evaluated row by row. A seed makes built-in random
+distributions reproducible.
+
 ### B. Sampler & Sweeps (`labeeb.sampler`)
 Generate design matrices and parameters using grid sweeps or statistical distributions.
 

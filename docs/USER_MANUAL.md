@@ -73,6 +73,33 @@ offset = density + 0.1
 high_density = density > 19.0        # Attribute([False, False, True])
 ```
 
+For mixed stochastic, OAT, derived, and constant columns, pass a sampling
+specification when defining each attribute and construct the database once:
+
+```python
+from labeeb import Attribute, Constant, Database, Derived, Normal, OAT, Uniform
+
+db = Database(
+    attributes=[
+        Attribute("x", sampling=Normal(mean=0, std=1)),
+        Attribute("y", sampling=Uniform(low=0, high=10)),
+        Attribute("z", sampling=OAT([1, 2, 3])),
+        Attribute("kk", sampling=OAT([3, 6])),
+        Attribute("w", sampling=Derived(lambda row: row["x"] + row["z"])),
+        Attribute("k", sampling=Constant(5)),
+    ],
+    n=10,
+    seed=42,
+)
+```
+
+`n` is the total sample count when there are no OAT attributes. When OAT
+attributes are present, `n` is the number of random replicates for each row of
+the one-at-a-time design. Multiple OAT attributes use the first value of each
+as the shared baseline and vary one attribute per design row. Built-in random
+distributions share the seeded generator; derived functions receive each row
+as a dictionary after sampled and constant values are ready.
+
 ### `Database`
 A `Database` manages an aligned collection of `Attribute` instances with tabular import/export capabilities.
 
