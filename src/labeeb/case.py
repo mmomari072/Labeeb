@@ -327,7 +327,8 @@ class Case(CoupledUnit):
             raise CaseExecutionError(f"Failed to import flags map from Excel: {e}") from e
         return self
 
-    def register_dynamic_attribute(self, attr_name: str, func: Callable[[pd.Series], Any]) -> "Case":
+    def register_dynamic_attribute(self, attr_name: str, func: Callable[[pd.Series], Any],
+                                  allow_override: bool = False) -> "Case":
         """
         Register a function to compute an attribute dynamically.
 
@@ -337,9 +338,14 @@ class Case(CoupledUnit):
         Args:
             attr_name: Name of the attribute (used in flags).
             func: Callable that takes a row (pd.Series) and returns the computed value.
+            allow_override: If True, allows overriding a database attribute name (with warning).
+                           If False (default), raises error if name conflicts with database attribute.
 
         Returns:
             Self for method chaining.
+
+        Raises:
+            CaseExecutionError: If attr_name conflicts with a database attribute and allow_override=False.
 
         Example:
             case.register_dynamic_attribute(
@@ -347,6 +353,20 @@ class Case(CoupledUnit):
                 lambda row: 100 - row['layer1'] - row['layer2']
             )
         """
+        # Check for naming conflicts with database attributes
+        if self.database is not None:
+            db_columns = set(self.database.to_dataframe().columns) if hasattr(self.database, 'to_dataframe') else set()
+
+            if attr_name in db_columns:
+                msg = f"Dynamic attribute '{attr_name}' conflicts with database attribute of the same name"
+                if allow_override:
+                    logger.warning(f"{msg} (allow_override=True, will use dynamic version during flag replacement)")
+                else:
+                    raise CaseExecutionError(
+                        f"{msg}. Use allow_override=True if you intend to shadow the database attribute, "
+                        f"or choose a different name. Database columns: {sorted(db_columns)}"
+                    )
+
         self.dynamic_attributes[attr_name] = func
         logger.info(f"Registered dynamic attribute: {attr_name}")
         return self
