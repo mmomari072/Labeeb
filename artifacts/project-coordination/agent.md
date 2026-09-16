@@ -166,3 +166,12 @@ When modifying or expanding the Labeeb codebase, AI agents must adhere to the fo
 6. **Documentation & Tests**:
    * Every new feature or bug fix must be accompanied by corresponding unit tests under `tests/`.
    * Update `README.md`, `agent.md`, and `ARCHITECTURE.md` when extending public interfaces.
+
+## v2.1 sampling contract
+
+- Preserve Monte Carlo and independent OAT replication defaults.
+- LHS stratification applies within each OAT group; shared mode reuses draws.
+- Custom samplers receive the RNG through `draw(size, rng)`; LHS requires a PPF.
+- Register construction-time derived columns with the reactive dependency system.
+  Expression dependencies resolve in topological order; chained callbacks must
+  declare dependencies. Test source updates, cycles, and missing dependencies.

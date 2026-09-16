@@ -44,7 +44,7 @@ manifests and routine campaign operations.
 - Records execution events, command logs, artifacts, retries, and output-catalog entries when enabled.
 - Keeps optional AI and optimization integrations separate from the lightweight core.
 
-> 📖 **Comprehensive Guide**: See the complete [v2.0.0 User Manual & API Guide](docs/USER_MANUAL.md) for in-depth examples covering declarative harvesters, coupling stability controls, secure execution, optional integrations, and non-blocking shared campaign memory.
+> 📖 **Comprehensive Guide**: See the complete [v2.1.0 User Manual & API Guide](docs/USER_MANUAL.md) for in-depth examples covering declarative harvesters, coupling stability controls, secure execution, optional integrations, and non-blocking shared campaign memory.
 
 > 🛠️ **Developer Guide**: See [docs/DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md) for architecture/API contracts, extension points, lifecycle & events, persistence/failure semantics, test conventions, compatibility rules, and debugging recipes.
 
@@ -166,6 +166,43 @@ the baseline, then one attribute varies at a time. Here that produces four OAT
 rows; `n=10` yields 40 rows. Each random attribute is sampled for all 40 rows,
 then derived attributes are evaluated row by row. A seed makes built-in random
 distributions reproducible.
+
+
+Sampling method and distribution are configured separately:
+
+```python
+sampled = Database(
+    attributes=[
+        Attribute("x", sampling=Normal(0, 1)),
+        Attribute("z", sampling=OAT([1, 2, 3])),
+        Attribute("w", sampling=Derived("v + z")),
+        Attribute("v", sampling=Derived("2 * x")),
+    ],
+    n=10,
+    method="lhs",
+    random_reuse="shared",
+    seed=42,
+)
+sampled.set_row(0, {"x": 5})  # v becomes 10; w becomes 11 for this row.
+```
+
+- `method="monte_carlo"` is the default; `"lhs"` draws one value from each
+  probability stratum per random attribute within each OAT group.
+- `random_reuse="independent"` draws a fresh sample set for every OAT row.
+  `"shared"` reuses the same set across OAT rows for matched comparisons.
+- `Derived("expression")` resolves derived chains regardless of declaration
+  order. Callbacks can declare `dependencies=["x", "v"]`; without this list,
+  they depend on all non-derived columns. Missing dependencies and cycles fail
+  with `DatabaseError`. Updates through `set_row()` or database column assignment
+  recompute derived columns; direct mutation of an attribute list does not.
+- Custom Monte Carlo samplers implement `draw(size, rng)` to use the seeded
+  generator; custom LHS distributions implement `ppf(probabilities)`.
+  Legacy `sampler(size)` and `get_random_sample(size)` remain supported for
+  Monte Carlo, but manage their own random state.
+
+The default `n` is 1. Sampling specifications are evaluated during construction;
+this release does not serialize sampling plans or automatically resample existing
+columns. LHS stratifies marginal distributions; it does not impose correlations.
 
 ### B. Sampler & Sweeps (`labeeb.sampler`)
 Generate design matrices and parameters using grid sweeps or statistical distributions.

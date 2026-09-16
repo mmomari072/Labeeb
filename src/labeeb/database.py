@@ -10,6 +10,8 @@ import datetime
 import inspect
 import json
 import logging
+import math
+from statistics import NormalDist
 import operator
 import os
 import pickle
@@ -34,8 +36,8 @@ class Normal:
     std: float
 
     def draw(self, size: int, rng: Any) -> List[float]:
-        if self.std < 0:
-            raise SamplingError("Normal distribution standard deviation must be non-negative")
+        if not math.isfinite(self.mean) or not math.isfinite(self.std) or self.std < 0:
+            raise SamplingError("Normal parameters must be finite and standard deviation non-negative")
         return rng.normal(self.mean, self.std, size).tolist()
 
 
@@ -47,8 +49,8 @@ class Uniform:
     high: float
 
     def draw(self, size: int, rng: Any) -> List[float]:
-        if self.low > self.high:
-            raise SamplingError("Uniform distribution lower bound must not exceed upper bound")
+        if not math.isfinite(self.low) or not math.isfinite(self.high) or self.low > self.high:
+            raise SamplingError("Uniform bounds must be finite and ordered")
         return rng.uniform(self.low, self.high, size).tolist()
 
 
@@ -61,9 +63,14 @@ class OAT:
 
 @dataclass(frozen=True)
 class Derived:
-    """Row-wise derived-value function for an ``Attribute``."""
+    """Reactive expression or row callback.
 
-    function: Callable[[Dict[str, Any]], Any]
+    Expressions infer dependencies. Callbacks declare dependencies for derived
+    chains; omitted dependencies default to all non-derived input columns.
+    """
+
+    function: Union[str, Callable[[Dict[str, Any]], Any]]
+    dependencies: Optional[Sequence[str]] = None
 
 
 @dataclass(frozen=True)
@@ -174,6 +181,8 @@ class Attribute(list):
             description: Column explanation.
             Type: Numeric cast type (float, int, bool, etc.).
             unit: Physical unit.
+            sampling: Deferred distribution, OAT, constant, or derived specification;
+                mutually exclusive with data. Materialized by Database(attributes=...).
         """
         super().__init__()
         self.name: str = name
@@ -544,6 +553,8 @@ class Database(dict):
         attributes: Optional[Sequence[Attribute]] = None,
         n: Optional[int] = None,
         seed: Optional[int] = None,
+        method: str = "monte_carlo",
+        random_reuse: str = "independent",
         **kwargs: Any,
     ):
         """
@@ -554,6 +565,11 @@ class Database(dict):
             data: Initial dictionary mapping column names to data lists.
             description: Detailed database explanation.
             attr_list: Initial empty attribute column names.
+            attributes: Columns with data or deferred sampling specifications.
+            n: Total random samples, or repetitions per OAT design row (default 1).
+            seed: Seed for built-in distributions and custom draw(size, rng) samplers.
+            method: "monte_carlo" (default) or "lhs"; LHS stratifies each OAT group.
+            random_reuse: "independent" (default) or "shared" across OAT rows.
         """
         super().__init__()
         self.name: Optional[str] = name
@@ -595,16 +611,26 @@ class Database(dict):
         self.get = self.DataAccessor(self)
 
         if attributes is not None:
-            self._construct_from_attributes(attributes, n=n, seed=seed)
+            self._construct_from_attributes(
+                attributes, n=n, seed=seed, method=method, random_reuse=random_reuse
+            )
 
     def _construct_from_attributes(
-        self, attributes: Sequence[Attribute], *, n: Optional[int], seed: Optional[int]
+        self, attributes: Sequence[Attribute], *, n: Optional[int], seed: Optional[int],
+        method: str, random_reuse: str
     ) -> None:
         """Materialize attribute data and sampling specifications as aligned rows."""
+        if method not in ("monte_carlo", "lhs"):
+            raise DatabaseError("Sampling method must be 'monte_carlo' or 'lhs'")
+        if random_reuse not in ("independent", "shared"):
+            raise DatabaseError("random_reuse must be 'independent' or 'shared'")
         attrs = list(attributes)
         if any(not isinstance(attr, Attribute) for attr in attrs):
             raise DatabaseError("attributes must contain only Attribute instances")
         names = [attr.name for attr in attrs]
+        if any(not isinstance(name, str) or not name.strip() or name != name.strip()
+               or name == "__db_index__" for name in names):
+            raise DatabaseError("Attribute names must be non-empty, trimmed, and not __db_index__")
         if len(names) != len(set(names)):
             raise DatabaseError("Attribute names must be unique during database construction")
 
@@ -633,30 +659,47 @@ class Database(dict):
                 values = [value for value in design[attr.name] for _ in range(repeats)]
             elif isinstance(spec, Constant):
                 values = [spec.value] * row_count
-            elif isinstance(spec, Normal) or isinstance(spec, Uniform):
-                values = spec.draw(row_count, rng)
             elif spec is not None:
-                try:
-                    if hasattr(spec, "get_random_sample"):
-                        values = spec.get_random_sample(row_count)
-                    elif callable(spec):
-                        values = spec(row_count)
-                    else:
-                        raise DatabaseError(
-                            f"Unsupported sampling specification for attribute '{attr.name}'"
-                        )
-                except Exception as exc:
-                    raise DatabaseError(f"Sampling attribute '{attr.name}' failed: {exc}") from exc
-                if hasattr(values, "tolist"):
-                    values = values.tolist()
-                if isinstance(values, (str, bytes)) or not isinstance(values, Sequence):
-                    values = [values]
-                values = list(values)
-                if len(values) != row_count:
-                    raise DatabaseError(
-                        f"Sampler for attribute '{attr.name}' returned {len(values)} values; "
-                        f"expected {row_count}"
-                    )
+                block_size = repeats if oat_attrs else row_count
+                block_count = row_count // block_size
+                values = []
+                for block in range(block_count):
+                    if block and random_reuse == "shared":
+                        values.extend(values[:block_size])
+                        continue
+                    try:
+                        if method == "lhs":
+                            probabilities = (np.arange(block_size) + rng.random(block_size)) / block_size
+                            rng.shuffle(probabilities)
+                            probabilities = np.clip(probabilities, np.nextafter(0., 1.), np.nextafter(1., 0.))
+                            if isinstance(spec, Uniform):
+                                spec.draw(0, rng)  # Validate distribution parameters.
+                                draws = spec.low + probabilities * (spec.high - spec.low)
+                            elif isinstance(spec, Normal):
+                                spec.draw(0, rng)
+                                draws = [spec.mean + spec.std * NormalDist().inv_cdf(float(p))
+                                         for p in probabilities]
+                            elif callable(getattr(spec, "ppf", None)):
+                                draws = spec.ppf(probabilities)
+                            else:
+                                raise DatabaseError("LHS requires Normal, Uniform, or a sampler with ppf(probabilities)")
+                        elif callable(getattr(spec, "draw", None)):
+                            draws = spec.draw(block_size, rng)
+                        elif hasattr(spec, "get_random_sample"):
+                            draws = spec.get_random_sample(block_size)
+                        elif callable(spec):
+                            draws = spec(block_size)
+                        else:
+                            raise DatabaseError("Unsupported sampling specification")
+                        if hasattr(draws, "tolist"):
+                            draws = draws.tolist()
+                        if isinstance(draws, (str, bytes)) or not isinstance(draws, Sequence):
+                            draws = [draws]
+                        if len(draws) != block_size:
+                            raise DatabaseError(f"Sampler returned {len(draws)} values; expected {block_size}")
+                        values.extend(draws)
+                    except Exception as exc:
+                        raise DatabaseError(f"Sampling attribute '{attr.name}' failed: {exc}") from exc
             elif attr:
                 source = list(attr)
                 if len(source) == 1:
@@ -673,28 +716,41 @@ class Database(dict):
                 )
             generated[attr.name] = list(values)
 
-        # Derived attributes run after all sampled and constant values are available.
-        for attr in deferred:
-            if not callable(attr.sampling.function):
-                raise DatabaseError(f"Derived function for attribute '{attr.name}' must be callable")
-            try:
-                generated[attr.name] = [
-                    attr.sampling.function({key: values[row] for key, values in generated.items()})
-                    for row in range(row_count)
-                ]
-            except Exception as exc:
-                raise DatabaseError(f"Deriving attribute '{attr.name}' failed: {exc}") from exc
-
         for attr in attrs:
-            self.add_attribute(
-                Attribute(
-                    name=attr.name,
-                    data=generated[attr.name],
-                    description=attr.description,
-                    Type=attr.type,
-                    unit=attr.unit,
-                )
-            )
+            if isinstance(attr.sampling, Derived):
+                continue
+            self.add_attribute(Attribute(name=attr.name, data=generated[attr.name],
+                                         description=attr.description, Type=attr.type, unit=attr.unit))
+
+        # Resolve dependencies before registering with the existing reactive system.
+        base_names = list(generated)
+        dependencies: Dict[str, List[str]] = {}
+        for attr in deferred:
+            spec = attr.sampling
+            if spec.dependencies is not None:
+                deps = list(spec.dependencies)
+            elif isinstance(spec.function, str):
+                deps = _extract_expression_dependencies(spec.function, names)
+            else:
+                # Preserve legacy row-callable construction; chained callables declare dependencies.
+                deps = list(base_names)
+            missing = [dep for dep in deps if dep not in names]
+            if missing:
+                raise DatabaseError(f"Derived attribute '{attr.name}' has missing dependencies: {missing}")
+            dependencies[attr.name] = deps
+
+        pending = list(deferred)
+        while pending:
+            ready = [attr for attr in pending
+                     if all(dep in self for dep in dependencies[attr.name])]
+            if not ready:
+                raise DatabaseError("Circular or unresolved derived dependencies: " +
+                                    ", ".join(attr.name for attr in pending))
+            for attr in ready:
+                self.add_derived_attribute(attr.name, attr.sampling.function,
+                                           dependencies=dependencies[attr.name],
+                                           unit=attr.unit, description=attr.description, Type=attr.type)
+                pending = [item for item in pending if item is not attr]
 
     def validate(self) -> None:
         """Validate all Attribute columns inside the database."""

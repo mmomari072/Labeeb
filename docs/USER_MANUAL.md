@@ -1,8 +1,8 @@
-# Labeeb (لبيب) v2.0.0 User Manual & API Guide
+# Labeeb (لبيب) v2.1.0 User Manual & API Guide
 
 > **Sensitivity & Uncertainty Analysis, Simulation Coupling, and Online State Analysis API**  
 > **Author**: Eng. Mohammad Omari  
-> **Version**: 2.0.0
+> **Version**: 2.1.0
 
 ---
 
@@ -48,7 +48,7 @@ are listed in `requirements.txt`.
 Verify the installation:
 ```python
 import labeeb
-print(labeeb.__version__)  # Output: 2.0.0
+print(labeeb.__version__)  # Output: 2.1.0
 ```
 
 ---
@@ -99,6 +99,43 @@ the one-at-a-time design. Multiple OAT attributes use the first value of each
 as the shared baseline and vary one attribute per design row. Built-in random
 distributions share the seeded generator; derived functions receive each row
 as a dictionary after sampled and constant values are ready.
+
+
+Sampling method and distribution are configured separately:
+
+```python
+sampled = Database(
+    attributes=[
+        Attribute("x", sampling=Normal(0, 1)),
+        Attribute("z", sampling=OAT([1, 2, 3])),
+        Attribute("w", sampling=Derived("v + z")),
+        Attribute("v", sampling=Derived("2 * x")),
+    ],
+    n=10,
+    method="lhs",
+    random_reuse="shared",
+    seed=42,
+)
+sampled.set_row(0, {"x": 5})  # v becomes 10; w becomes 11 for this row.
+```
+
+- `method="monte_carlo"` is the default; `"lhs"` draws one value from each
+  probability stratum per random attribute within each OAT group.
+- `random_reuse="independent"` draws a fresh sample set for every OAT row.
+  `"shared"` reuses the same set across OAT rows for matched comparisons.
+- `Derived("expression")` resolves derived chains regardless of declaration
+  order. Callbacks can declare `dependencies=["x", "v"]`; without this list,
+  they depend on all non-derived columns. Missing dependencies and cycles fail
+  with `DatabaseError`. Updates through `set_row()` or database column assignment
+  recompute derived columns; direct mutation of an attribute list does not.
+- Custom Monte Carlo samplers implement `draw(size, rng)` to use the seeded
+  generator; custom LHS distributions implement `ppf(probabilities)`.
+  Legacy `sampler(size)` and `get_random_sample(size)` remain supported for
+  Monte Carlo, but manage their own random state.
+
+The default `n` is 1. Sampling specifications are evaluated during construction;
+this release does not serialize sampling plans or automatically resample existing
+columns. LHS stratifies marginal distributions; it does not impose correlations.
 
 ### `Database`
 A `Database` manages an aligned collection of `Attribute` instances with tabular import/export capabilities.

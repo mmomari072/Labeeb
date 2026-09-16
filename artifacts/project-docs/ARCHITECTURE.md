@@ -146,3 +146,13 @@ LabeebError (Base)
 ├── BackupError
 └── SharedMemoryError
 ```
+
+### v2.1 mixed sampling extension
+
+`Database(attributes=..., method="monte_carlo"|"lhs",
+random_reuse="independent"|"shared")` separates marginal distributions from
+sampling design. Random values are generated in blocks of `n` for each OAT row;
+shared mode repeats the first block. Custom samplers use `draw(size, rng)` or
+`ppf(probabilities)` for LHS. Construction-time `Derived` specifications register
+with the existing reactive dependency system in topological order. String
+expressions infer dependencies; chained callbacks declare them explicitly.
