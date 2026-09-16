@@ -182,6 +182,77 @@ db_new = Database(name="imported")
 db_new.import_from_file("core_sampling.csv")
 ```
 
+### `Database` Display and Tabulation
+
+View and analyze database contents using built-in display methods:
+
+```python
+from labeeb.database import Database
+
+db = Database(data={
+    "experiment": ["exp_1", "exp_2", "exp_3"],
+    "temperature": [25.0, 30.0, 35.0],
+    "pressure": [101.3, 105.2, 109.1],
+    "yield": [0.85, 0.92, 0.88]
+})
+
+# Display as formatted Pandas DataFrame (best for tables)
+print(db.to_dataframe())
+#    experiment  temperature  pressure  yield
+# 0      exp_1         25.0     101.3   0.85
+# 1      exp_2         30.0     105.2   0.92
+# 2      exp_3         35.0     109.1   0.88
+
+# In Jupyter: auto-renders as beautiful HTML table
+df = db.to_dataframe()
+df  # Formatted table display
+
+# Get all rows as list of dictionaries
+all_rows = db.rows
+# [{'experiment': 'exp_1', 'temperature': 25.0, ...}, ...]
+
+# Access single row
+row_1 = db.get_row(1)  # {'experiment': 'exp_2', 'temperature': 30.0, ...}
+
+# Get multiple rows as sub-database
+subset = db.get_row([0, 2])
+print(subset.to_dataframe())
+
+# Access single column as Attribute
+temps = db["temperature"]
+print(list(temps))  # [25.0, 30.0, 35.0]
+
+# Column statistics
+print(db["yield"].mean())
+print(db["yield"].statistics())
+
+# Plot one attribute vs another (requires matplotlib)
+db.plot("temperature", "yield")
+
+# Export to files
+db.export_to_file("results.csv")       # CSV
+db.export_to_file("results.xlsx")      # Excel
+db.to_json("results.json")             # JSON
+db.to_parquet("results.parquet")       # Parquet
+
+# Use Pandas directly for advanced analysis
+df = db.to_dataframe()
+print(df.describe())      # Descriptive statistics
+print(df.corr())          # Correlation matrix
+print(df.groupby("experiment").mean())  # Grouped aggregation
+```
+
+| Method | Returns | Use Case |
+| --- | --- | --- |
+| `db.to_dataframe()` | Pandas DataFrame | Formatted tabular display (best!) |
+| `db.rows` | List[Dict] | All rows as dictionaries |
+| `db.get_row(i)` | Dict | Single row |
+| `db.get_row([i, j])` | Database | Multiple rows as sub-database |
+| `db["col"]` | Attribute | Single column (list-like) |
+| `db.iloc[i]` | Dict | Single row (accessor syntax) |
+| `db.columns()` | Attribute | Column names |
+| `db.plot(x, y)` | Matplotlib plot | Visualization |
+
 ---
 
 ## 4. Parameter Sampling & Design Matrices

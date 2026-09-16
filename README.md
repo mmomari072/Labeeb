@@ -204,6 +204,47 @@ The default `n` is 1. Sampling specifications are evaluated during construction;
 this release does not serialize sampling plans or automatically resample existing
 columns. LHS stratifies marginal distributions; it does not impose correlations.
 
+#### Display & Tabulation
+
+View and analyze database contents using built-in display methods:
+
+```python
+# Display as formatted Pandas DataFrame (best for tables)
+print(db.to_dataframe())
+
+# In Jupyter: auto-renders as beautiful HTML table
+df = db.to_dataframe()
+df  # Formatted display
+
+# Get all rows as list of dictionaries
+all_rows = db.rows  # [{'col1': val1, ...}, ...]
+
+# Access single row or column
+row_0 = db.get_row(0)       # Dict
+temps = db["temperature"]    # Attribute (list-like)
+
+# Column statistics & analysis
+print(db["yield"].mean())
+print(db["yield"].statistics())
+
+# Plot one attribute vs another
+db.plot("temperature", "yield")  # Requires matplotlib
+
+# Export to files
+db.export_to_file("results.csv")
+db.export_to_file("results.xlsx")
+db.to_json("results.json")
+db.to_parquet("results.parquet")
+```
+
+| Method | Returns | Use Case |
+| --- | --- | --- |
+| `db.to_dataframe()` | Pandas DataFrame | Formatted table display |
+| `db.rows` | List[Dict] | All rows as dictionaries |
+| `db.get_row(i)` | Dict | Single row |
+| `db["col"]` | Attribute | Single column |
+| `db.plot(x, y)` | Matplotlib plot | Visualization |
+
 ### B. Sampler & Sweeps (`labeeb.sampler`)
 Generate design matrices and parameters using grid sweeps or statistical distributions.
 

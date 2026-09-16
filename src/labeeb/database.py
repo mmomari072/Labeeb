@@ -1191,6 +1191,8 @@ class Database(dict):
             return self.get
         if norm_name in ["index"]:
             return self["__db_index__"]
+        if norm_name in ["rows"]:
+            return [self.get_row(i) for i in range(len(self))]
         if name in ["creation_date", "cdate"]:
             return self._creation_date
         if name == "ncols":
