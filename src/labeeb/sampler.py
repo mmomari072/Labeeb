@@ -247,14 +247,22 @@ class FOATConstructor:
 
 
 class OATConstructor(FOATConstructor):
-    """One-at-a-time design constructor using each parameter's first value as baseline."""
+    """One-at-a-time or factorial design constructor for discrete parameter sweeps.
+
+    With single attribute: baseline + one-at-a-time variations (Morris screening).
+    With multiple attributes: full factorial Cartesian product of all values.
+    """
 
     def __init__(self, case_name: Optional[str] = None):
         super().__init__(case_name=case_name)
-        self.description = "One-at-a-Time Sweep Constructor"
+        self.description = "One-at-a-Time / Factorial Sweep Constructor"
 
     def construct(self) -> Dict[str, List[Any]]:
-        """Construct a baseline row plus one-parameter-at-a-time variations."""
+        """Construct OAT or factorial design based on number of attributes.
+
+        Single attribute: baseline row + (n-1) one-at-a-time variations.
+        Multiple attributes: factorial Cartesian product of all values.
+        """
         if not self.cases:
             self.samples = {}
             return self.samples
@@ -266,7 +274,17 @@ class OATConstructor(FOATConstructor):
 
         self.samples = {attr: [] for attr in attrs}
         self.samples.update({f"__{attr}_index__": [] for attr in attrs})
-        baseline = {attr: values[0] for attr, values in self.cases.items()}
+
+        if len(attrs) == 1:
+            self._construct_baseline_oat(attrs)
+        else:
+            self._construct_factorial(attrs)
+
+        return self.samples
+
+    def _construct_baseline_oat(self, attrs: List[str]) -> None:
+        """Construct baseline + one-at-a-time variations (Morris screening)."""
+        baseline = {attr: self.cases[attr][0] for attr in attrs}
         baseline_indices = {attr: 0 for attr in attrs}
 
         def append_case(values: Dict[str, Any], indices: Dict[str, int]) -> None:
@@ -282,7 +300,32 @@ class OATConstructor(FOATConstructor):
                 values[attr] = value
                 indices[attr] = index
                 append_case(values, indices)
-        return self.samples
+
+    def _construct_factorial(self, attrs: List[str]) -> None:
+        """Construct full factorial Cartesian product of all attribute values.
+
+        Iteration order: leftmost attribute varies slowest, rightmost varies fastest.
+        Example: z=[1,2,3], kk=[3,6] yields:
+          z:  [1, 2, 3, 1, 2, 3]  (varies fastest)
+          kk: [3, 3, 3, 6, 6, 6]  (varies slowest)
+        """
+        import itertools
+
+        def append_case(values: Dict[str, Any], indices: Dict[str, int]) -> None:
+            for attr in attrs:
+                self.samples[attr].append(values[attr])
+                self.samples[f"__{attr}_index__"].append(indices[attr])
+
+        attrs_reversed = list(reversed(attrs))
+        attr_indices = [list(range(len(self.cases[attr]))) for attr in attrs_reversed]
+
+        for indices_tuple in itertools.product(*attr_indices):
+            values = {}
+            indices = {}
+            for attr, idx in zip(attrs_reversed, indices_tuple):
+                values[attr] = self.cases[attr][idx]
+                indices[attr] = idx
+            append_case(values, indices)
 def correlated_normal_sample(
     means: Sequence[float],
     cov: Sequence[Sequence[float]],
