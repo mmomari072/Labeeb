@@ -665,6 +665,75 @@ template.replace_expressions({
 })
 ```
 
+#### Option 5: Dynamic Attributes (Runtime Computation)
+For computed attributes that should be fresh for each case execution (timestamps, configuration IDs, derived values):
+
+```python
+from labeeb.case import Case, Flag, FlagsMap
+from labeeb.database import Database, Attribute, Uniform
+from datetime import datetime
+
+# Create database with base parameters only
+db = Database(
+    attributes=[
+        Attribute("layer1", sampling=Uniform(15, 35)),
+        Attribute("layer2", sampling=Uniform(15, 35)),
+    ],
+    n=5,
+    seed=42
+)
+
+# Create Case and register dynamic attributes
+case = Case(name="optimization_study")
+
+# Register functions that compute attributes on-demand
+case.register_dynamic_attribute(
+    'layer3',  # Computed thickness
+    lambda row: 100 - (row['layer1'] + row['layer2'])
+)
+
+case.register_dynamic_attribute(
+    'timestamp',  # Fresh per case
+    lambda row: datetime.now().isoformat()
+)
+
+case.register_dynamic_attribute(
+    'config_id',  # Unique identifier
+    lambda row: f"CONFIG_{row['layer1']:.0f}_{row['layer2']:.0f}_{100 - row['layer1'] - row['layer2']:.0f}"
+)
+
+# Setup flags that reference BOTH database and dynamic attributes
+flags = FlagsMap().add_flag(
+    Flag("#LAYER1#", "layer1", "%5.2f"),      # From database
+    Flag("#LAYER2#", "layer2", "%5.2f"),      # From database
+    Flag("#LAYER3#", "layer3", "%5.2f"),      # Dynamic (computed!)
+    Flag("#TIMESTAMP#", "timestamp"),          # Dynamic (fresh per case!)
+    Flag("#CONFIG_ID#", "config_id"),          # Dynamic (computed!)
+)
+
+case.FlagsMap = flags
+case.database = db
+case.exe_cmd = ["simulator_exec inp=template.txt"]
+case.run_case_main_dir = "simulations"
+
+# Launch - dynamic attributes computed fresh for each case
+case.launch()
+```
+
+**Key features of dynamic attributes:**
+- **Fresh Computation:** Each row gets new computed values (useful for timestamps, state IDs)
+- **Database Integration:** Seamlessly resolve from database or dynamic attributes
+- **Flag Replacement:** Works naturally with FlagsMap and template substitution
+- **Method Chaining:** `register_dynamic_attribute()` returns `self` for convenience
+- **Backward Compatible:** Existing code without dynamic attributes works unchanged
+
+**Typical use cases:**
+- Timestamps and execution IDs (fresh per case)
+- Derived parameters (layer 3 from layers 1 and 2)
+- Configuration hashes (unique per case)
+- Optimization feedback (update when base parameters change)
+- Run tracking and provenance
+
 
 ### D. Coupling Kernel (`labeeb.coupler`)
 Orchestrate coupled iterations between multiple simulation cases.

@@ -689,6 +689,131 @@ template.replace_expressions({
 })
 ```
 
+### Dynamic Attributes (Runtime Computation)
+Dynamic attributes are on-demand computed values stored in the `Case` object, not the database. They are evaluated fresh for each case execution, making them ideal for timestamps, computed parameters, configuration IDs, and optimization feedback loops.
+
+#### Key Difference: Database vs. Dynamic Attributes
+
+| Aspect | Database (Derived) | Case (Dynamic) |
+|--------|-------------------|----------------|
+| **Storage** | Frozen in database at creation | Computed on-demand by Case |
+| **Recalculation** | Once at DB creation time | Every time accessed during execution |
+| **Use Case** | Static computed columns | Fresh values per case execution |
+| **Example** | `layer3 = 100 - layer1 - layer2` | `timestamp = now()`, `case_id = f"RUN_{__id__}"` |
+
+#### Registering Dynamic Attributes
+
+Use `case.register_dynamic_attribute(name, func)` to register a computation function:
+
+```python
+from labeeb.case import Case, Flag, FlagsMap
+from labeeb.database import Database, Attribute, Uniform
+from datetime import datetime
+
+# Create database with base parameters only
+db = Database(
+    attributes=[
+        Attribute("layer1", sampling=Uniform(15, 35)),
+        Attribute("layer2", sampling=Uniform(15, 35)),
+    ],
+    n=5,
+    seed=42
+)
+
+# Create Case and register dynamic attributes
+case = Case(name="optimization_study")
+
+# Computed derived value (recalculated for each row)
+case.register_dynamic_attribute(
+    'layer3',
+    lambda row: 100 - (row['layer1'] + row['layer2'])
+)
+
+# Fresh timestamp for each case execution
+case.register_dynamic_attribute(
+    'timestamp',
+    lambda row: datetime.now().isoformat()
+)
+
+# Unique configuration ID (computed from all parameters)
+case.register_dynamic_attribute(
+    'config_id',
+    lambda row: f"CONFIG_{int(row['__id__']):03d}_{row['layer1']:.0f}_{row['layer2']:.0f}_{100 - row['layer1'] - row['layer2']:.0f}"
+)
+
+# Setup flags to reference BOTH database and dynamic attributes
+flags = FlagsMap().add_flag(
+    Flag("#LAYER1#", "layer1", "%5.2f"),      # Database attribute
+    Flag("#LAYER2#", "layer2", "%5.2f"),      # Database attribute
+    Flag("#LAYER3#", "layer3", "%5.2f"),      # Dynamic attribute (computed!)
+    Flag("#TIMESTAMP#", "timestamp"),          # Dynamic attribute (fresh!)
+    Flag("#CONFIG_ID#", "config_id"),          # Dynamic attribute (computed!)
+)
+
+case.FlagsMap = flags
+case.database = db
+
+# During launch(), all flags resolve correctly:
+# - Database attributes use row values
+# - Dynamic attributes compute on-the-fly
+case.launch()
+```
+
+#### Attribute Resolution with `resolve_attribute_value()`
+
+During flag replacement, Labeeb resolves attributes in this order:
+
+1. **Check Database**: If attribute exists in the row, use that value
+2. **Check Dynamic**: If not in database, compute using registered function
+3. **Error**: If not found in either, raise `CaseExecutionError`
+
+You can also resolve attributes programmatically:
+
+```python
+# Get a single row
+row = db.get_row(0)
+
+# Resolve from database or dynamic attributes
+layer1_val = case.resolve_attribute_value('layer1', row)  # From database
+layer3_val = case.resolve_attribute_value('layer3', row)  # Computed dynamically
+```
+
+#### Method Chaining
+
+`register_dynamic_attribute()` returns `self` for convenient chaining:
+
+```python
+case.register_dynamic_attribute('layer3', lambda row: 100 - row['layer1'] - row['layer2']) \
+    .register_dynamic_attribute('timestamp', lambda row: datetime.now().isoformat()) \
+    .register_dynamic_attribute('config_id', lambda row: f"CONFIG_{row['__id__']:03d}")
+```
+
+#### Important Notes
+
+**Dependency Between Dynamic Attributes:**
+Dynamic attributes cannot directly reference other dynamic attributes in their functions. If needed, recompute the dependency:
+
+```python
+# ❌ DON'T DO THIS:
+case.register_dynamic_attribute('layer3', lambda row: 100 - row['layer1'] - row['layer2'])
+case.register_dynamic_attribute('config', lambda row: f"L3={row['layer3']}")  # row['layer3'] not in row!
+
+# ✅ DO THIS:
+case.register_dynamic_attribute('layer3', lambda row: 100 - row['layer1'] - row['layer2'])
+case.register_dynamic_attribute('config', lambda row: f"L3={100 - row['layer1'] - row['layer2']}")
+```
+
+**Row Data Format:**
+Functions receive either a dict (from `database.get_row()`) or pandas.Series (from DataFrame iteration). Both work seamlessly with `resolve_attribute_value()`.
+
+#### Typical Use Cases
+
+- **Timestamps & IDs**: Fresh per execution for run tracking
+- **Derived Parameters**: Computed values (thickness from layers, etc.)
+- **Configuration Hashes**: Unique identifiers per case
+- **Optimization Feedback**: Update when base parameters change in feedback loops
+- **Provenance Tracking**: Case identifiers, execution times, computational metadata
+
 ---
 
 ## 6. Simulation Execution & Declarative Output Harvesters
