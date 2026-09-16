@@ -703,7 +703,7 @@ Dynamic attributes are on-demand computed values stored in the `Case` object, no
 
 #### Registering Dynamic Attributes
 
-Use `case.register_dynamic_attribute(name, func)` to register a computation function:
+Use `case.register_dynamic_attribute(name, func)` to register a computation function. The method validates that the attribute name doesn't conflict with database attributes by default:
 
 ```python
 from labeeb.case import Case, Flag, FlagsMap
@@ -722,24 +722,62 @@ db = Database(
 
 # Create Case and register dynamic attributes
 case = Case(name="optimization_study")
+case.database = db
 
 # Computed derived value (recalculated for each row)
+# ✓ Safe: 'layer3' doesn't exist in database
 case.register_dynamic_attribute(
     'layer3',
     lambda row: 100 - (row['layer1'] + row['layer2'])
 )
 
 # Fresh timestamp for each case execution
+# ✓ Safe: 'timestamp' doesn't exist in database
 case.register_dynamic_attribute(
     'timestamp',
     lambda row: datetime.now().isoformat()
 )
 
 # Unique configuration ID (computed from all parameters)
+# ✓ Safe: 'config_id' doesn't exist in database
 case.register_dynamic_attribute(
     'config_id',
     lambda row: f"CONFIG_{int(row['__id__']):03d}_{row['layer1']:.0f}_{row['layer2']:.0f}_{100 - row['layer1'] - row['layer2']:.0f}"
+
 )
+```
+
+#### Name Conflict Detection
+
+By default, registering a dynamic attribute with a name that conflicts with a database attribute raises an error:
+
+```python
+# ✗ ERROR: 'layer1' exists in database
+case.register_dynamic_attribute(
+    'layer1',  # Conflicts!
+    lambda row: row['layer1'] * 2
+)
+# Raises: CaseExecutionError("Dynamic attribute 'layer1' conflicts with...")
+
+# ✓ ALLOWED: Override with explicit permission and warning
+case.register_dynamic_attribute(
+    'layer1',
+    lambda row: row['layer1'] * 2,
+    allow_override=True  # Explicitly allow shadowing
+)
+# Logs warning: "Dynamic attribute 'layer1' conflicts... (allow_override=True, will use dynamic version...)"
+```
+
+**Why conflict detection?**
+- Prevents accidental name collisions from typos
+- Makes intent explicit: `allow_override=True` shows intentional shadowing
+- Improves code readability and maintainability
+- The error message lists all database columns for reference
+
+**When to use `allow_override=True`:**
+- You want to replace/transform a database value during flag replacement
+- You're intentionally shadowing a base parameter with a computed version
+- You need to document this override for clarity
 
 # Setup flags to reference BOTH database and dynamic attributes
 flags = FlagsMap().add_flag(

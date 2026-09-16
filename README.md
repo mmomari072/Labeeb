@@ -725,6 +725,7 @@ case.launch()
 - **Database Integration:** Seamlessly resolve from database or dynamic attributes
 - **Flag Replacement:** Works naturally with FlagsMap and template substitution
 - **Method Chaining:** `register_dynamic_attribute()` returns `self` for convenience
+- **Name Conflict Detection:** Prevents accidental shadowing of database attributes (can override with `allow_override=True`)
 - **Backward Compatible:** Existing code without dynamic attributes works unchanged
 
 **Typical use cases:**
