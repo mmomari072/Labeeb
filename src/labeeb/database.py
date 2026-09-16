@@ -636,11 +636,14 @@ class Database(dict):
 
         oat_attrs = [attr for attr in attrs if isinstance(attr.sampling, OAT)]
         design: Dict[str, List[Any]] = {}
+        oat_indices: Dict[str, List[int]] = {}
         if oat_attrs:
             constructor = OATConstructor()
             constructor.add_case({attr.name: list(attr.sampling.values) for attr in oat_attrs})
-            design = constructor.construct()
-            design = {attr.name: design[attr.name] for attr in oat_attrs}
+            full_design = constructor.construct()
+            design = {attr.name: full_design[attr.name] for attr in oat_attrs}
+            oat_indices = {f"__{attr.name}_index__": full_design[f"__{attr.name}_index__"]
+                          for attr in oat_attrs if f"__{attr.name}_index__" in full_design}
             repeats = n if n is not None else 1
             row_count = len(next(iter(design.values()))) * repeats
         else:
@@ -721,6 +724,16 @@ class Database(dict):
                 continue
             self.add_attribute(Attribute(name=attr.name, data=generated[attr.name],
                                          description=attr.description, Type=attr.type, unit=attr.unit))
+
+        # Add row ID column (__id__)
+        self.add_attribute(Attribute(name="__id__", data=list(range(1, row_count + 1)),
+                                     description="Row ID (1-indexed)", Type=int))
+
+        # Add OAT index columns (1-indexed for readability)
+        for oat_col_name, indices in oat_indices.items():
+            one_indexed = [idx + 1 for idx in indices]
+            self.add_attribute(Attribute(name=oat_col_name, data=one_indexed,
+                                         description=f"OAT index for {oat_col_name[2:-7]}", Type=int))
 
         # Resolve dependencies before registering with the existing reactive system.
         base_names = list(generated)
