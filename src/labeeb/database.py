@@ -611,15 +611,26 @@ class Database(dict):
         self.get = self.DataAccessor(self)
 
         if attributes is not None:
+            id_start = kwargs.pop('id_start', 1)
+            index_placement = kwargs.pop('index_placement', 'end')
+            include_indices = kwargs.pop('include_indices', True)
             self._construct_from_attributes(
-                attributes, n=n, seed=seed, method=method, random_reuse=random_reuse
+                attributes, n=n, seed=seed, method=method, random_reuse=random_reuse,
+                id_start=id_start, index_placement=index_placement, include_indices=include_indices
             )
 
     def _construct_from_attributes(
         self, attributes: Sequence[Attribute], *, n: Optional[int], seed: Optional[int],
-        method: str, random_reuse: str
+        method: str, random_reuse: str, id_start: int = 1, index_placement: str = 'end',
+        include_indices: bool = True
     ) -> None:
-        """Materialize attribute data and sampling specifications as aligned rows."""
+        """Materialize attribute data and sampling specifications as aligned rows.
+
+        Args:
+            id_start: Starting value for row IDs (0 or 1, default 1)
+            index_placement: Where to place OAT indices - 'end' (default) or 'interleaved'
+            include_indices: Whether to include row ID and OAT indices (default True)
+        """
         if method not in ("monte_carlo", "lhs"):
             raise DatabaseError("Sampling method must be 'monte_carlo' or 'lhs'")
         if random_reuse not in ("independent", "shared"):
@@ -719,24 +730,52 @@ class Database(dict):
                 )
             generated[attr.name] = list(values)
 
-        for attr in attrs:
-            if isinstance(attr.sampling, Derived):
-                continue
-            self.add_attribute(Attribute(name=attr.name, data=generated[attr.name],
-                                         description=attr.description, Type=attr.type, unit=attr.unit))
+        # Prepare OAT indices (replicated for each random replicate if needed)
+        replicated_oat_indices: Dict[str, List[int]] = {}
+        if include_indices and oat_indices:
+            if repeats > 1:
+                for oat_col_name, base_indices in oat_indices.items():
+                    replicated_oat_indices[oat_col_name] = [idx for idx in base_indices for _ in range(repeats)]
+            else:
+                replicated_oat_indices = oat_indices
 
-        # Add row ID column (__id__)
-        self.add_attribute(Attribute(name="__id__", data=list(range(1, row_count + 1)),
-                                     description="Row ID (1-indexed)", Type=int))
+        # Handle index placement
+        if include_indices and index_placement == 'interleaved':
+            # Interleave: attribute → __attr_index__ → next attribute
+            for attr in attrs:
+                if isinstance(attr.sampling, Derived):
+                    continue
+                self.add_attribute(Attribute(name=attr.name, data=generated[attr.name],
+                                             description=attr.description, Type=attr.type, unit=attr.unit))
 
-        # Add OAT index columns (0-indexed, replicated for each random replicate)
-        if oat_indices and repeats > 1:
-            for oat_col_name, base_indices in oat_indices.items():
-                replicated_indices = [idx for idx in base_indices for _ in range(repeats)]
-                self.add_attribute(Attribute(name=oat_col_name, data=replicated_indices,
-                                             description=f"OAT index for {oat_col_name[2:-7]} (0-indexed)", Type=int))
+                oat_col_name = f"__{attr.name}_index__"
+                if oat_col_name in replicated_oat_indices:
+                    self.add_attribute(Attribute(name=oat_col_name, data=replicated_oat_indices[oat_col_name],
+                                                 description=f"OAT index for {attr.name} (0-indexed)", Type=int))
         else:
-            for oat_col_name, indices in oat_indices.items():
+            # Default: all attributes, then all indices
+            for attr in attrs:
+                if isinstance(attr.sampling, Derived):
+                    continue
+                self.add_attribute(Attribute(name=attr.name, data=generated[attr.name],
+                                             description=attr.description, Type=attr.type, unit=attr.unit))
+
+        # Add row ID column (__id__) first if include_indices
+        if include_indices:
+            id_values = list(range(id_start, id_start + row_count))
+            # Reorder dict: __id__ first, then other attributes
+            id_attr = Attribute(name="__id__", data=id_values,
+                               description=f"Row ID ({id_start}-indexed)", Type=int)
+            new_dict = {'__id__': id_attr}
+            for key, val in self.items():
+                if key != '__id__':
+                    new_dict[key] = val
+            self.clear()
+            self.update(new_dict)
+
+        # Add OAT index columns at the end if not interleaved
+        if include_indices and index_placement != 'interleaved':
+            for oat_col_name, indices in replicated_oat_indices.items():
                 self.add_attribute(Attribute(name=oat_col_name, data=indices,
                                              description=f"OAT index for {oat_col_name[2:-7]} (0-indexed)", Type=int))
 
