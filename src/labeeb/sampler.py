@@ -304,10 +304,11 @@ class OATConstructor(FOATConstructor):
     def _construct_factorial(self, attrs: List[str]) -> None:
         """Construct full factorial Cartesian product of all attribute values.
 
-        Iteration order: leftmost attribute varies slowest, rightmost varies fastest.
+        Iteration order: first-declared attribute varies slowest, last-declared varies fastest.
+        This matches the declaration order in the attributes list.
         Example: z=[1,2,3], kk=[3,6] yields:
-          z:  [1, 2, 3, 1, 2, 3]  (varies fastest)
-          kk: [3, 3, 3, 6, 6, 6]  (varies slowest)
+          z:  [1, 1, 2, 2, 3, 3]  (varies slowest - declared first)
+          kk: [3, 6, 3, 6, 3, 6]  (varies fastest - declared last)
         """
         import itertools
 
@@ -316,13 +317,12 @@ class OATConstructor(FOATConstructor):
                 self.samples[attr].append(values[attr])
                 self.samples[f"__{attr}_index__"].append(indices[attr])
 
-        attrs_reversed = list(reversed(attrs))
-        attr_indices = [list(range(len(self.cases[attr]))) for attr in attrs_reversed]
+        attr_indices = [list(range(len(self.cases[attr]))) for attr in attrs]
 
         for indices_tuple in itertools.product(*attr_indices):
             values = {}
             indices = {}
-            for attr, idx in zip(attrs_reversed, indices_tuple):
+            for attr, idx in zip(attrs, indices_tuple):
                 values[attr] = self.cases[attr][idx]
                 indices[attr] = idx
             append_case(values, indices)
