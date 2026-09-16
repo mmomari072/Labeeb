@@ -68,6 +68,21 @@ Lambda functions and other unpicklable objects are no longer a blocker for savin
 
 ---
 
+### ✅ Critical Data Destruction Bug Fix
+**Commit:** `694c589`  
+**Date:** 2026-09-16
+
+- **Issue:** Database attributes all showed as None after adding configurable index parameters
+  - Root cause: Line 769-774 called `self.clear()` before rebuilding dictionary
+  - This destroyed all previously added data columns (z, kk, kkk, k)
+- **Solution:** Add `__id__` first using direct assignment `self['__id__'] = ...`, then add other attributes
+  - Leverages Python 3.7+ dict insertion order preservation
+  - No clearing or rebuilding needed
+  - Data integrity preserved throughout construction
+- All configurable parameters (id_start, index_placement, include_indices) now working correctly
+
+---
+
 ## Pending Tasks
 
 - [ ] Add performance benchmarks for large databases (>100k rows)
@@ -95,13 +110,21 @@ Lambda functions and other unpicklable objects are no longer a blocker for savin
 ## Session Summary: 2026-09-16
 
 **User:** Mohammad OMARI  
-**Session Focus:** Bug fixes and documentation improvements
+**Session Focus:** Bug fixes, feature configuration, and data integrity
 
-### Commits
+### Commits (Latest Session)
 1. `551c99a` - Fix db.rows attribute + documentation
 2. `d105b94` - OAT factorial design implementation
 3. `bdd2079` - Correct OAT iteration order
 4. `a536f7e` - Save/load data export fix
+5. `7eebf01` - Add configurable index parameters (id_start, index_placement, include_indices)
+6. `694c589` - Fix critical data destruction bug in index parameter handling
+
+### Features Added (v2.1.0+)
+- ✅ Configurable row ID start value (id_start parameter)
+- ✅ Configurable index placement (end vs interleaved)
+- ✅ Toggle index inclusion (include_indices boolean)
+- ✅ All parameters tested and verified working
 
 ### Issues Created
 - ISSUES.md: OATConstructor design decision documentation
@@ -110,9 +133,11 @@ Lambda functions and other unpicklable objects are no longer a blocker for savin
 - README.md: Display & tabulation section
 - USER_MANUAL.md: Detailed display examples
 - ISSUES.md: Known issues tracker
+- backlog.md: Development progress tracking
 
 ### Code Quality
-- 3 major bug fixes
+- 4 major bug fixes
 - 100% backward compatible
-- Comprehensive error handling
+- Comprehensive parameter validation
+- Full test coverage for new features
 - Clear documentation and examples
