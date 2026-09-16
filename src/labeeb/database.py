@@ -1360,23 +1360,63 @@ class Database(dict):
             if col_name != "__db_index__":
                 local_dict[col_name] = col
 
-    def save(self, filepath: Optional[str] = None) -> "Database":
-        """Pickle the database object to disk."""
+    def save(self, filepath: Optional[str] = None, format: str = "csv") -> "Database":
+        """Export database data to a portable format (CSV, JSON, Parquet).
+
+        Args:
+            filepath: Output file path. Auto-detects format from extension if not specified.
+            format: Export format ('csv', 'json', 'parquet'). Defaults to 'csv'.
+
+        Returns:
+            Self instance.
+
+        Note:
+            Exports data only (not functions/metadata). Derived attributes are
+            materialized as data columns. Use this instead of pickle to avoid
+            issues with lambda functions or unpicklable objects.
+        """
         target = filepath or self.db_filepath
+
+        if filepath:
+            ext = filepath.lower().split('.')[-1]
+            if ext in ['csv']:
+                format = 'csv'
+            elif ext in ['json']:
+                format = 'json'
+            elif ext in ['parquet', 'pq']:
+                format = 'parquet'
+
         try:
-            with open(target, "wb") as fid:
-                pickle.dump(self, fid)
+            if format.lower() == 'csv':
+                self.export_to_file(target)
+            elif format.lower() == 'json':
+                self.to_json(target)
+            elif format.lower() == 'parquet':
+                self.to_parquet(target)
+            else:
+                raise DatabaseError(f"Unsupported format: {format}. Use 'csv', 'json', or 'parquet'")
         except Exception as e:
-            logger.error(f"Failed to save Database pickle to {target}: {e}")
-            raise DatabaseError(f"Pickle save failed to path '{target}': {e}") from e
+            logger.error(f"Failed to save database to {target}: {e}")
+            raise DatabaseError(f"Save failed to path '{target}': {e}") from e
         return self
 
     def load(self, filepath: str) -> "Database":
-        """Load database contents from a pickled file."""
+        """Load database contents from a CSV, JSON, or Parquet file.
+
+        Auto-detects format from file extension.
+        """
         try:
-            with open(filepath, "rb") as fid:
-                loaded_db = pickle.load(fid)
-                self.__dict__.update(loaded_db.__dict__)
+            ext = filepath.lower().split('.')[-1]
+            if ext in ['csv']:
+                self.import_from_file(filepath)
+            elif ext in ['json']:
+                self.read_json(filepath)
+            elif ext in ['parquet', 'pq']:
+                self.read_parquet(filepath)
+            else:
+                with open(filepath, "rb") as fid:
+                    loaded_db = pickle.load(fid)
+                    self.__dict__.update(loaded_db.__dict__)
                 for col_name, col_data in loaded_db.items():
                     self[col_name] = col_data
         except Exception as e:
