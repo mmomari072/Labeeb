@@ -409,6 +409,43 @@ class Case(CoupledUnit):
             f"Attribute '{attr_name}' not found in database or registered dynamic attributes"
         )
 
+    def get_dynamic_attribute_value(self, attr_name: str, row_id: int) -> Any:
+        """
+        Get a dynamic attribute value for a specific row by row ID.
+
+        Convenience method that fetches the row from the database and computes
+        the dynamic attribute value for that specific case.
+
+        Args:
+            attr_name: Name of the dynamic attribute to retrieve.
+            row_id: Row ID/index in the database (0-based).
+
+        Returns:
+            The computed dynamic attribute value for the specified row.
+
+        Raises:
+            CaseExecutionError: If row_id is out of bounds or attribute not found.
+            ValueError: If database is not configured.
+
+        Example:
+            # Get the 'layer3' value for row 0
+            layer3_value = case.get_dynamic_attribute_value('layer3', 0)
+
+            # Get timestamp for row 2
+            timestamp = case.get_dynamic_attribute_value('timestamp', 2)
+        """
+        if self.database is None:
+            raise ValueError("Database not configured. Set case.database before accessing dynamic attributes.")
+
+        try:
+            row = self.database.get_row(row_id)
+        except (IndexError, KeyError) as e:
+            raise CaseExecutionError(
+                f"Cannot access row {row_id}: database has {len(self.database.rows)} rows (indices 0-{len(self.database.rows)-1})"
+            ) from e
+
+        return self.resolve_attribute_value(attr_name, row)
+
     def add_file(self, *files: file_io.File) -> "Case":
         """
         Add input template File(s) to the case.
