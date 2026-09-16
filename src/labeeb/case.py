@@ -380,7 +380,7 @@ class Case(CoupledUnit):
 
         Args:
             attr_name: Name of the attribute to resolve.
-            row: DataFrame row (pd.Series) containing database values.
+            row: DataFrame row (pd.Series or dict) containing database values.
 
         Returns:
             The resolved value (from database or computed dynamically).
@@ -402,7 +402,17 @@ class Case(CoupledUnit):
         # Try dynamic attributes
         if attr_name in self.dynamic_attributes:
             func = self.dynamic_attributes[attr_name]
-            return func(row)
+            # Check if function accepts resolve parameter (supports dynamic dependencies)
+            import inspect
+            sig = inspect.signature(func)
+
+            if len(sig.parameters) > 1 or 'resolve' in sig.parameters:
+                # Function accepts a resolver - pass method to resolve dependencies
+                resolver = lambda dep_attr: self.resolve_attribute_value(dep_attr, row)
+                return func(row, resolver)
+            else:
+                # Original function signature (row only)
+                return func(row)
 
         # Not found
         raise CaseExecutionError(
