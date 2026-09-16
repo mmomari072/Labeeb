@@ -161,11 +161,12 @@ db = Database(
 )
 ```
 
-Multiple OAT attributes use `OATConstructor` semantics: their first values form
-the baseline, then one attribute varies at a time. Here that produces four OAT
-rows; `n=10` yields 40 rows. Each random attribute is sampled for all 40 rows,
-then derived attributes are evaluated row by row. A seed makes built-in random
-distributions reproducible.
+Multiple OAT attributes produce a full factorial Cartesian product of all values.
+For example, `OAT([1, 2, 3])` and `OAT([3, 6])` generates 6 rows (3×2). Single OAT
+attributes use baseline + one-at-a-time variations (Morris screening). With `n=10`
+random replicates per OAT row, the factorial case yields 60 rows total. Each random
+attribute is sampled for all rows, then derived attributes are evaluated row by row.
+A seed makes built-in random distributions reproducible.
 
 
 Sampling method and distribution are configured separately:
@@ -203,6 +204,28 @@ sampled.set_row(0, {"x": 5})  # v becomes 10; w becomes 11 for this row.
 The default `n` is 1. Sampling specifications are evaluated during construction;
 this release does not serialize sampling plans or automatically resample existing
 columns. LHS stratifies marginal distributions; it does not impose correlations.
+
+#### Index Columns (Automatic)
+
+When constructing databases with samplers (OAT, FOAT, etc.), Labeeb automatically adds index columns:
+- **`__id__`**: Sequential row identifier
+- **`__<attr>_index__`**: 0-indexed position in each OAT attribute's value list
+
+Customize this behavior:
+
+```python
+db = Database(
+    attributes=[
+        Attribute("z", sampling=OAT([1, 2, 3])),
+        Attribute("kk", sampling=OAT([3, 6])),
+    ],
+    n=1,
+    seed=42,
+    id_start=1,              # Row IDs start at 1 (default) or 0
+    index_placement='end',   # 'end' (default) or 'interleaved'
+    include_indices=True,    # False to disable all index columns
+)
+```
 
 #### Display & Tabulation
 

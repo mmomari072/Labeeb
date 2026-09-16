@@ -253,6 +253,70 @@ print(df.groupby("experiment").mean())  # Grouped aggregation
 | `db.columns()` | Attribute | Column names |
 | `db.plot(x, y)` | Matplotlib plot | Visualization |
 
+### Configurable Index Columns
+
+When constructing a database with samplers (OAT, FOAT, etc.), Labeeb automatically adds:
+- **`__id__`**: Row ID column (sequential identifier for each row)
+- **`__<attr>_index__`**: OAT index columns (0-indexed position in each OAT attribute's value list)
+
+You can customize index behavior through three parameters:
+
+```python
+from labeeb import Database, Attribute, OAT
+
+db = Database(
+    attributes=[
+        Attribute("z", sampling=OAT([1, 2, 3])),
+        Attribute("kk", sampling=OAT([3, 6])),
+    ],
+    n=1,
+    seed=42,
+    # Customize index behavior:
+    id_start=1,              # Start row IDs at 1 (default) instead of 0
+    index_placement='end',   # Place all indices at end (default='end', alternative='interleaved')
+    include_indices=True,    # Include index columns (default=True; set False to disable)
+)
+
+df = db.to_dataframe()
+print(df)
+#    __id__  z  kk  __z_index__  __kk_index__
+# 0       1  1   3            0             0
+# 1       2  1   6            0             1
+# 2       3  2   3            1             0
+# 3       4  2   6            1             1
+# 4       5  3   3            2             0
+# 5       6  3   6            2             1
+```
+
+**Parameter Details:**
+
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `id_start` | int | 1 | Starting value for `__id__` column (0-indexed or 1-indexed) |
+| `index_placement` | str | 'end' | Where to place OAT indices: `'end'` (all at right) or `'interleaved'` (after each attribute) |
+| `include_indices` | bool | True | Whether to include any index columns at all |
+
+**Examples:**
+
+```python
+# 0-indexed row IDs
+db = Database(attributes=[...], id_start=0, include_indices=True)
+
+# Interleaved: z, __z_index__, kk, __kk_index__
+db = Database(attributes=[...], index_placement='interleaved')
+
+# No index columns at all
+db = Database(attributes=[...], include_indices=False)
+
+# Use all together: 0-indexed, interleaved, no indices
+db = Database(
+    attributes=[...],
+    id_start=0,
+    index_placement='interleaved',
+    include_indices=False
+)
+```
+
 ---
 
 ## 4. Parameter Sampling & Design Matrices
@@ -277,17 +341,53 @@ grid_db = Database(data=grid_dict)
 print(f"Generated {len(grid_db)} parameter rows.")  # 6 rows
 ```
 
-For an OAT design, use `OATConstructor`. The first value for each attribute is
-the baseline; each following row changes one attribute while the others remain
-at baseline:
+For discrete parameter sweeps, use `OATConstructor`. Behavior depends on the number of OAT attributes:
 
+**Single OAT Attribute** (Morris Screening): baseline + one-at-a-time variations
 ```python
 from labeeb.sampler import OATConstructor
 
 oat = OATConstructor()
-oat.add_case({"INLET_TEMP": [25.0, 30.0, 35.0], "CORE_FLOW": [1200.0, 1400.0]})
+oat.add_case({"INLET_TEMP": [25.0, 30.0, 35.0]})
 oat_dict = oat.construct()
-# Rows: (25, 1200), (30, 1200), (35, 1200), (25, 1400)
+# Rows: (25), (30), (35)  ← One baseline + variations
+```
+
+**Multiple OAT Attributes** (Factorial Design): full Cartesian product
+```python
+oat = OATConstructor()
+oat.add_case({
+    "INLET_TEMP": [25.0, 30.0, 35.0],   # 3 values
+    "CORE_FLOW": [1200.0, 1400.0]       # 2 values
+})
+oat_dict = oat.construct()
+# Total rows: 3 × 2 = 6 (full factorial)
+# First parameter varies slowest, last parameter varies fastest:
+#   INLET_TEMP: [25, 25, 30, 30, 35, 35]
+#   CORE_FLOW:  [1200, 1400, 1200, 1400, 1200, 1400]
+```
+
+Alternatively, construct with `Database` directly to get automatic index columns:
+
+```python
+from labeeb import Database, Attribute, OAT
+
+db = Database(
+    attributes=[
+        Attribute("INLET_TEMP", sampling=OAT([25.0, 30.0, 35.0])),
+        Attribute("CORE_FLOW", sampling=OAT([1200.0, 1400.0])),
+    ],
+    n=1,
+    seed=42,
+)
+print(db.to_dataframe())
+#    __id__  INLET_TEMP  CORE_FLOW  __INLET_TEMP_index__  __CORE_FLOW_index__
+# 0       1        25.0       1200                     0                    0
+# 1       2        25.0       1400                     0                    1
+# 2       3        30.0       1200                     1                    0
+# 3       4        30.0       1400                     1                    1
+# 4       5        35.0       1200                     2                    0
+# 5       6        35.0       1400                     2                    1
 ```
 
 Choose the design based on the question you are answering:
@@ -295,7 +395,8 @@ Choose the design based on the question you are answering:
 | Design | Changes per run | Typical use |
 | --- | --- | --- |
 | `FOATConstructor` | Every combination of every parameter | Complete interaction study when the grid is small |
-| `OATConstructor` | One parameter at a time from a shared baseline | Screening, ranking sensitivities, and quick optimization setup |
+| `OATConstructor` (single attr) | One parameter at a time from a shared baseline | Screening, ranking sensitivities (Morris method) |
+| `OATConstructor` (multiple attrs) | All combinations (factorial) | Parametric design exploration |
 | Per-attribute samplers | Each attribute follows its own distribution | Uncertainty quantification and randomized campaigns |
 
 Use FOAT when parameter interactions are important and the Cartesian product is
