@@ -85,13 +85,13 @@ def test_database_constructs_mixed_attributes_from_sampling_plan():
         seed=12,
     )
 
-    assert len(db) == 6
+    assert len(db) == 8
     assert list(zip(db["z"], db["kk"])) == [
-        (1.0, 3.0), (1.0, 3.0), (2.0, 3.0),
-        (2.0, 3.0), (1.0, 6.0), (1.0, 6.0),
+        (1.0, 3.0), (1.0, 3.0), (1.0, 6.0), (1.0, 6.0),
+        (2.0, 3.0), (2.0, 3.0), (2.0, 6.0), (2.0, 6.0),
     ]
     assert list(db["w"]) == pytest.approx([x + z for x, z in zip(db["x"], db["z"])])
-    assert list(db["k"]) == [5.0] * 6
+    assert list(db["k"]) == [5.0] * 8
 
 
 def test_attribute_accepts_sampling_instead_of_data():

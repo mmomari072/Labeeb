@@ -450,3 +450,106 @@ def truncated_normal_sample(
         f"Truncation interval [{lo}, {hi}] rejected too many proposals for N(mean={mean}, "
         f"std={std}); widen the interval or reduce the sample size"
     )
+
+
+class SimplexDOE:
+    """Uniform random design in the simplex ``sum(x_i) <= total``.
+
+    Generates designs in the feasible simplex region where all variables are
+    non-negative and sum to at most a maximum total. Particularly useful for
+    multi-layer shielding and other sum-constrained optimization problems.
+
+    Draws from a Dirichlet distribution with an additional slack coordinate.
+    Unlike normalizing only the variable coordinates, the slack coordinate
+    allows points throughout the feasible volume rather than only on its face.
+    """
+
+    def __init__(
+        self,
+        total: float = 100.0,
+        min_values: Optional[List[float]] = None,
+        seed: Optional[int] = None,
+    ):
+        """
+        Initialize SimplexDOE.
+
+        Args:
+            total: Maximum sum constraint (e.g., 100 cm for three layers).
+            min_values: Minimum value for each variable (default all 0).
+            seed: Random seed for reproducibility.
+        """
+        self.total = float(total)
+        if not math.isfinite(self.total) or self.total <= 0:
+            raise SamplingError("Total constraint must be finite and positive")
+        self.min_values = list(min_values) if min_values is not None else []
+        self.seed = seed
+        try:
+            self.rng = np.random.RandomState(seed)
+        except (TypeError, ValueError) as exc:
+            raise SamplingError(f"Invalid random seed: {seed!r}") from exc
+
+    def generate(self, n_samples: int, n_vars: int) -> np.ndarray:
+        """
+        Generate uniform random samples in the simplex: sum(x_i) <= total, x_i >= min.
+
+        Args:
+            n_samples: Number of designs.
+            n_vars: Number of variables.
+
+        Returns:
+            Array of shape (n_samples, n_vars) with all designs feasible.
+        """
+        if (
+            not isinstance(n_samples, (int, np.integer))
+            or isinstance(n_samples, (bool, np.bool_))
+            or not isinstance(n_vars, (int, np.integer))
+            or isinstance(n_vars, (bool, np.bool_))
+            or n_samples < 1
+            or n_vars < 1
+        ):
+            raise SamplingError("n_samples and n_vars must be positive")
+
+        mins = self.min_values if self.min_values else [0.0] * n_vars
+        if len(mins) != n_vars:
+            raise SamplingError("Provide exactly one minimum per variable")
+        try:
+            mins = [float(value) for value in mins]
+        except (TypeError, ValueError) as exc:
+            raise SamplingError("Minimum values must be finite numbers") from exc
+        if not all(math.isfinite(value) for value in mins):
+            raise SamplingError("Minimum values must be finite numbers")
+
+        min_total = sum(mins)
+        if min_total > self.total:
+            raise SamplingError(
+                f"Minimum sum {min_total} exceeds total constraint {self.total}"
+            )
+
+        residual = self.total - min_total
+        if residual == 0:
+            return np.tile(np.asarray(mins, dtype=float), (int(n_samples), 1))
+        simplex = self.rng.dirichlet(np.ones(int(n_vars) + 1), size=int(n_samples))
+        return np.asarray(mins, dtype=float) + simplex[:, :int(n_vars)] * residual
+
+
+def simplex_sample(
+    n_samples: int,
+    n_vars: int,
+    total: float = 100.0,
+    min_values: Optional[List[float]] = None,
+    seed: Optional[int] = None,
+) -> np.ndarray:
+    """Quick simplex sampling wrapper.
+
+    Args:
+        n_samples: Number of designs.
+        n_vars: Number of variables.
+        total: Sum constraint.
+        min_values: Minimum per variable.
+        seed: Random seed.
+
+    Returns:
+        Array of shape (n_samples, n_vars) with feasible designs.
+    """
+    doe = SimplexDOE(total=total, min_values=min_values, seed=seed)
+    return doe.generate(n_samples, n_vars)

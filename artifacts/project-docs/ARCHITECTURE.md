@@ -67,6 +67,13 @@ flowchart TD
 
 ### 2.3 Design Subsystem (`labeeb.sampler`)
 * **Reproducible DOE**: `latin_hypercube_sample()` accepts physical bounds and a seed or generator; `halton_sample()` provides dependency-free low-discrepancy points.
+* **Simplex sampling**: `SimplexDOE` draws uniformly within the region `x_i >= min_i` and `sum(x_i) <= total`; an explicit slack coordinate samples the interior rather than only the equality boundary.
+* **OAT contract**: `OATConstructor` produces baseline plus one-at-a-time variations for a single attribute and a full factorial product for multiple attributes.
+
+### 2.3.1 Optional Surrogate Subsystem (`labeeb.surrogates`)
+* **Polynomial response surface**: NumPy least-squares polynomial model with optional log transformation.
+* **Gaussian process and radial basis models**: lazy-load scikit-learn and SciPy only during fitting; install through the `surrogate` extra.
+* **Input contract**: fitting requires finite, aligned `X`/`y`; prediction validates feature count and accepts one query vector as a single row. GP uncertainty uses the delta method when predictions are log-transformed.
 
 ### 2.4 CLI Subsystem (`labeeb.cli`)
 * **Configuration Workflow**: `validate`, `run`, `status`, and `resume` expose manifest-driven local campaigns and persisted state without coupling the command parser to future scheduler backends.

@@ -51,14 +51,22 @@ from .sampler import (
     DiscreteSampling,
     FOATConstructor,
     OATConstructor,
+    SimplexDOE,
     correlated_normal_sample,
     halton_sample,
     latin_hypercube_sample,
     normal_sample,
     product,
     sample,
+    simplex_sample,
     uniform_sample,
     truncated_normal_sample,
+)
+from .surrogates import (
+    GaussianProcessSurrogate,
+    PolynomialSurrogate,
+    RadialBasisSurrogate,
+    Surrogate,
 )
 from .shared_memory import (
     CampaignMemory,
@@ -107,14 +115,15 @@ __all__ = [
     "CampaignMemory", "CampaignStateStore", "Case", "CaseExecutionError", "CaseResult", "CompositeEventPublisher", "Constraint", "Coupler",
     "CsvHarvester", "StatusRegistry", "ExecutionStatusRegistry", "EventPublisher", "EvaluationRecord", "ExcelHarvester", "OptimizeResult", "Optimizer", "OptimizationError", "NeuralMLPSurrogate",
     "CouplingError", "Database", "DatabaseError", "DesignPoint", "DiscreteSampling", "ExecutionBackend",
-    "ExecutionEvent", "ExecutionResult", "ExtractionError", "FOATConstructor", "OATConstructor", "File", "Flag", "FlagsMap",
+    "ExecutionEvent", "ExecutionResult", "ExtractionError", "FOATConstructor", "OATConstructor", "SimplexDOE", "File", "Flag", "FlagsMap",
     "Harvester", "InMemorySharedBackend", "JsonHarvester", "JsonlEventPublisher", "LabeebError", "LiveObserver", "LivePlot", "LocalExecutionBackend", "NullEventPublisher", "OutputCatalog", "OutputRecord", "Phase", "PlotObserver", "PublisherError", "RedisStreamEventPublisher", "RegexHarvester", "ResultsPool", "SamplingError", "SharedMemoryBackend", "SharedMemoryError", "TemplateError", "WebSocketEventPublisher", "correlation_analysis",
     "append_execution_event", "create_backup", "evaluate_expression", "export_analysis_bundle", "export_case_results", "export_execution_events", "export_optimization_history", "extract_csv", "extract_excel", "extract_json", "extract_regex", "format_value", "halton_sample", "simple_sensitivity_with_feedback",
     "latin_hypercube_sample", "load_analysis_bundle", "load_manifest", "morris_screening", "normal_sample", "product",
     "restore_backup", "run_extractor", "sample", "sobol_indices", "uniform_sample", "wilks_sample_size", "SurrogateModel", "optimize_scipy", "optimize_optuna", "rank_candidates",
     "validate_backup", "write_html_report", "print_banner", "CaseLoggerAdapter", "configure_logging",
     "Constant", "Derived", "Normal", "OAT", "Uniform",
-    "correlated_normal_sample", "truncated_normal_sample",
+    "correlated_normal_sample", "truncated_normal_sample", "simplex_sample",
+    "Surrogate", "PolynomialSurrogate", "GaussianProcessSurrogate", "RadialBasisSurrogate",
 ]
 
 def print_banner() -> None:

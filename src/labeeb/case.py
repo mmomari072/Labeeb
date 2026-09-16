@@ -146,12 +146,40 @@ class FlagsMap:
             )
         return self
 
-    def get_flags_values(self, att_vals: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def get_flags_values(self, att_vals: Optional[Dict[str, Any]] = None, case: Optional["Case"] = None) -> Dict[str, Any]:
         """
         Get dict mapping flag names to their formatted values.
+
+        Args:
+            att_vals: Dictionary of attribute values (typically row data)
+            case: Optional Case instance for resolving dynamic attributes
         """
+        # Reset all flags before setting new values to avoid stale values
+        for f_obj in self._flags.values():
+            f_obj.reset()
+
         if att_vals is not None:
-            self.set_values_from_attributes(att_vals)
+            if case is None:
+                # Original behavior: validate attributes are in att_vals only
+                self.set_values_from_attributes(att_vals)
+            else:
+                # New behavior: support dynamic attributes via case object
+                missing = []
+                for f_name, f_class in self._flags.items():
+                    att_name = f_class.attribute
+                    # Try to resolve from database or dynamic attributes
+                    try:
+                        value = case.resolve_attribute_value(att_name, att_vals)
+                        f_class.set_value(value)
+                    except CaseExecutionError:
+                        # Not found in database or dynamic attributes
+                        missing.append(f"{f_name} ({att_name})")
+
+                if missing:
+                    raise CaseExecutionError(
+                        "Missing values for linkage flags: " + ", ".join(missing)
+                    )
+
         values = {f_name: f_obj.get_value() for f_name, f_obj in self._flags.items()}
         missing = [f_name for f_name, value in values.items() if value is None]
         if missing:
@@ -224,6 +252,10 @@ class Case(CoupledUnit):
         self.execution_history: List[Dict[str, Any]] = []
         self._output_att()
 
+        # Dynamic attributes: Functions computed on-demand during flag replacement
+        # Maps attribute_name -> callable(row) -> value
+        self.dynamic_attributes: Dict[str, Callable[[pd.Series], Any]] = {}
+
         # Failure-handling policy (LAB-FAILURE-POLICY-01):
         #   command_failure_policy: "stop" (default, current semantics - raise),
         #                           "continue" (record FAILED, skip remaining commands),
@@ -294,6 +326,68 @@ class Case(CoupledUnit):
         except Exception as e:
             raise CaseExecutionError(f"Failed to import flags map from Excel: {e}") from e
         return self
+
+    def register_dynamic_attribute(self, attr_name: str, func: Callable[[pd.Series], Any]) -> "Case":
+        """
+        Register a function to compute an attribute dynamically.
+
+        Dynamic attributes are computed on-demand during flag replacement,
+        allowing them to be recalculated for each row without modifying the database.
+
+        Args:
+            attr_name: Name of the attribute (used in flags).
+            func: Callable that takes a row (pd.Series) and returns the computed value.
+
+        Returns:
+            Self for method chaining.
+
+        Example:
+            case.register_dynamic_attribute(
+                'layer3',
+                lambda row: 100 - row['layer1'] - row['layer2']
+            )
+        """
+        self.dynamic_attributes[attr_name] = func
+        logger.info(f"Registered dynamic attribute: {attr_name}")
+        return self
+
+    def resolve_attribute_value(self, attr_name: str, row: pd.Series) -> Any:
+        """
+        Resolve an attribute value from database or dynamic attributes.
+
+        First checks if the attribute exists in the row (database).
+        If not found, checks if it's registered as a dynamic attribute and computes it.
+
+        Args:
+            attr_name: Name of the attribute to resolve.
+            row: DataFrame row (pd.Series) containing database values.
+
+        Returns:
+            The resolved value (from database or computed dynamically).
+
+        Raises:
+            CaseExecutionError: If attribute not found in database or dynamic attributes.
+        """
+        # Handle both dict and Series row data
+        is_dict = isinstance(row, dict)
+
+        # Try database first
+        if is_dict:
+            if attr_name in row:
+                return row[attr_name]
+        else:
+            if attr_name in row.index:
+                return row[attr_name]
+
+        # Try dynamic attributes
+        if attr_name in self.dynamic_attributes:
+            func = self.dynamic_attributes[attr_name]
+            return func(row)
+
+        # Not found
+        raise CaseExecutionError(
+            f"Attribute '{attr_name}' not found in database or registered dynamic attributes"
+        )
 
     def add_file(self, *files: file_io.File) -> "Case":
         """
@@ -428,26 +522,36 @@ class Case(CoupledUnit):
                     flags = FlagsMap().add_flag(
                         *[flag for flag in self.FlagsMap if flag.attribute in active_attributes]
                     )
-                flagsmap = flags.get_flags_values(row_data)
+                # Pass case object to support dynamic attributes
+                flagsmap = flags.get_flags_values(row_data, case=self)
             else:
                 active_flags = {
                     flag_key: att_name
                     for flag_key, att_name in self.FlagsMap.items()
                     if active_attributes is None or att_name in active_attributes
                 }
-                missing = [
-                    f"{flag_key} ({att_name})"
-                    for flag_key, att_name in active_flags.items()
-                    if att_name not in row_data or row_data[att_name] is None
-                ]
+                # Check for missing values in database or dynamic attributes
+                missing = []
+                for flag_key, att_name in active_flags.items():
+                    # Check database
+                    if att_name in row_data and row_data[att_name] is not None:
+                        continue
+                    # Check dynamic attributes
+                    if att_name in self.dynamic_attributes:
+                        continue
+                    # Missing in both
+                    missing.append(f"{flag_key} ({att_name})")
+
                 if missing:
                     raise CaseExecutionError(
                         "Missing values for linkage flags: " + ", ".join(missing)
                     )
-                flagsmap = {
-                    flag_key: str(row_data[att_name])
-                    for flag_key, att_name in active_flags.items()
-                }
+
+                # Resolve flag values from database or dynamic attributes
+                flagsmap = {}
+                for flag_key, att_name in active_flags.items():
+                    value = self.resolve_attribute_value(att_name, row_data)
+                    flagsmap[flag_key] = str(value)
 
             # Write input templates with replaced placeholder flags
             self._write_input(flagsmap)

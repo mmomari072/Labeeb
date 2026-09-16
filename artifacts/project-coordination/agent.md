@@ -75,6 +75,10 @@ Labeeb/
 * **`FOATConstructor`**:
   * Constructs parametric matrices / grid sweeps.
   * `add_case(dict_of_param_lists)` computes Cartesian product sweeps across parameter variants.
+* **`OATConstructor`**:
+  * With one attribute, constructs baseline plus one-at-a-time variations; with multiple attributes, constructs the full factorial product.
+* **`SimplexDOE`**:
+  * Samples uniformly within a minimum-bounded simplex whose variable sum does not exceed `total`; requires exactly one minimum per variable.
 * **`DiscreteSampling`**:
   * Manages probability mass functions (PMF) and cumulative distribution functions (CDF).
   * Methods: `define_sample(values, probs)`, `get_random_sample(n)`, `stat(m)`.
@@ -82,6 +86,8 @@ Labeeb/
   * `uniform_sample(low, high, n)`
   * `normal_sample(loc, scale, n)`
   * `sample(dist_type, **params)`
+* **`labeeb.surrogates`**:
+  * `PolynomialSurrogate` uses NumPy; optional Gaussian-process and radial-basis models require the `surrogate` extra.
 
 ### C. `labeeb.case`
 * **`Flag`**:

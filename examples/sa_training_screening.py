@@ -6,9 +6,9 @@ swap it for any code (MCNP/RELAP5/...) run through a Case/Campaign: build the
 same design matrix with OATConstructor/FOATConstructor, execute one simulation
 per row, and reuse the ranking logic below on harvested metrics.
 
-Screening design: One-at-a-Time sweep around a baseline (OATConstructor, first
-value of each parameter = baseline), then a normalized local-sensitivity
-ranking. Deterministic and self-contained:
+Design: OATConstructor's multi-attribute mode creates the full factorial product
+of parameter levels. The example ranks normalized single-parameter contrasts
+against the first (baseline) row. It is deterministic and self-contained:
 
     python examples/sa_training_screening.py [--print-table]
 
@@ -43,7 +43,7 @@ def simulate_response(inputs):
 # ------------------------------------------------------------------ workflow
 
 def run_sa(nominal=None, steps=None, print_table=False):
-    """Build the OAT design, evaluate every row, rank sensitivities.
+    """Build the factorial design, evaluate rows, rank baseline contrasts.
 
     Returns a summary dict (usable by tests): design rows, per-parameter
     normalized sensitivity (mean |dy| per unit of input), and the ranking.
@@ -57,7 +57,8 @@ def run_sa(nominal=None, steps=None, print_table=False):
     if set(nominal) != set(steps):
         raise ValueError("nominal and steps must cover the same parameters")
 
-    # API-first design matrix: baseline (first values) + one-at-a-time steps.
+    # Multiple attributes use OATConstructor's full factorial mode. Its first
+    # row is the baseline and includes every one-parameter contrast.
     oat = OATConstructor()
     oat.add_case({
         param: [nominal[param], nominal[param] + steps[param], nominal[param] - steps[param]]
@@ -74,7 +75,8 @@ def run_sa(nominal=None, steps=None, print_table=False):
     for param in nominal:
         deltas = []
         for index, row in enumerate(rows):
-            # row 0 = baseline; every later row moves exactly one parameter
+            # Select rows where this parameter changes and all others stay at
+            # baseline; factorial rows with joint changes are ignored here.
             if index > 0 and row[param] != nominal[param] and all(
                 row[other] == nominal[other] for other in nominal if other != param
             ):
@@ -98,7 +100,7 @@ def run_sa(nominal=None, steps=None, print_table=False):
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--print-table", action="store_true",
-                        help="print the full OAT design table with responses")
+                        help="print the full factorial design table with responses")
     args = parser.parse_args(argv)
 
     summary = run_sa(print_table=args.print_table)

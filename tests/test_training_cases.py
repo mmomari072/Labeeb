@@ -32,7 +32,7 @@ ua_module = load_example("ua_training_propagation.py")
 
 def test_sa_design_rows_and_baseline():
     summary = sa_module.run_sa()
-    assert summary["design_rows"] == 7  # baseline + 2 steps x 3 parameters
+    assert summary["design_rows"] == 27  # 3 values for each of 3 parameters
     # simulator at nominal: 0.9 exactly
     assert summary["baseline_response"] == pytest.approx(0.9)
 
@@ -57,7 +57,7 @@ def test_sa_accepts_custom_nominal_and_steps():
         nominal={"TEMP": 600.0, "FLOW": 1500.0, "PRESSURE": 160.0},
         steps={"TEMP": 10.0, "FLOW": 20.0, "PRESSURE": 5.0},
     )
-    assert summary["design_rows"] == 7
+    assert summary["design_rows"] == 27
     assert summary["ranking"][0][0] == "TEMP"
 
 

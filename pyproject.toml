@@ -36,14 +36,21 @@ jinja2 = [
 plot = [
     "matplotlib>=3.0.0",
 ]
+surrogate = [
+    "scikit-learn>=1.0",
+    "scipy>=1.7",
+]
 all = [
     "openpyxl>=3.0.0",
     "pyarrow>=10.0.0",
     "jinja2>=3.0.0",
     "matplotlib>=3.0.0",
+    "scikit-learn>=1.0",
+    "scipy>=1.7",
 ]
 dev = [
     "pytest>=7.0.0",
+    "tomli>=1.1; python_version < '3.11'",
     "black>=22.0.0",
     "isort>=5.0.0",
     "flake8>=4.0.0",

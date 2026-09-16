@@ -75,18 +75,27 @@ def test_foat_constructor_grid_sweep():
     assert actual_indices == expected_indices
 
 
-def test_oat_constructor_varies_one_parameter_from_baseline():
+def test_oat_constructor_uses_factorial_design_for_multiple_parameters():
     constructor = OATConstructor()
     constructor.add_case({"a": [1, 2, 3], "b": [10, 20]})
 
     result = constructor.construct()
 
     assert list(zip(result["a"], result["b"])) == [
-        (1, 10), (2, 10), (3, 10), (1, 20)
+        (1, 10), (1, 20), (2, 10), (2, 20), (3, 10), (3, 20)
     ]
     assert list(zip(result["__a_index__"], result["__b_index__"])) == [
-        (0, 0), (1, 0), (2, 0), (0, 1)
+        (0, 0), (0, 1), (1, 0), (1, 1), (2, 0), (2, 1)
     ]
+
+
+def test_oat_constructor_keeps_baseline_design_for_one_parameter():
+    constructor = OATConstructor()
+    constructor.add_case({"a": [1, 2, 3]})
+
+    result = constructor.construct()
+
+    assert result["a"] == [1, 2, 3]
 
 
 def test_oat_constructor_rejects_empty_parameter_values():

@@ -186,7 +186,9 @@ def test_scipy_adapter_simulation_failure_recorded():
     engine_available("scipy")
 
     def flaky(candidate):
-        if candidate["x"] > 1.0:
+        # The optimizer starts at x0=-1.0, so this exercises failure capture
+        # deterministically instead of depending on which direction it explores.
+        if candidate["x"] < 0.0:
             raise RuntimeError("code crashed")
         return candidate["x"] ** 2
 

@@ -164,7 +164,8 @@ db_new.import_from_file("reactor_core.csv")
 | Method | Design | Efficiency | Best For |
 |--------|--------|-----------|----------|
 | **FOAT** | N^d combinations | Space-filling but expensive | Complete interaction analysis |
-| **OAT** | (N-1)×M+1 cases | Fast screening | Factor prioritization, sensitivity ranking |
+| **OATConstructor, one attribute** | N values incl. baseline | Fast one-factor screening | Morris-style single-parameter contrasts |
+| **OATConstructor, multiple attributes** | Product of levels | Full factorial | Parameter combinations and interactions |
 | **LHS** | User-defined size N | Efficient space-filling | Uncertainty propagation, small N |
 | **Halton** | Deterministic, N | Reproducible | Monte Carlo with seed control |
 
@@ -186,23 +187,18 @@ db = Database(data=grid)
 print(f"Generated {len(db)} cases")  # 3 × 2 × 2 = 12
 ```
 
-**Exercise 2.2**: One-At-A-Time (OAT)
+**Exercise 2.2**: One-At-A-Time (OAT) for one parameter
 
 ```python
 from labeeb.sampler import OATConstructor
 
 oat = OATConstructor()
-oat.add_case({
-    "INLET_TEMP": [25.0, 30.0, 35.0],
-    "CORE_FLOW": [1200.0, 1400.0],
-    "ENRICHMENT": [0.01, 0.02],
-})
+oat.add_case({"INLET_TEMP": [25.0, 30.0, 35.0]})
 
 grid = oat.construct()
 db = Database(data=grid)
-print(f"Generated {len(db)} cases")  # 1 + (3-1) + (2-1) + (2-1) = 5
-# Rows: (25, 1200, 0.01), (30, 1200, 0.01), (35, 1200, 0.01), 
-#       (25, 1400, 0.01), (25, 0.02, 0.01)
+print(f"Generated {len(db)} cases")  # 3 values, including the baseline
+# For multiple attributes OATConstructor produces the full factorial product.
 ```
 
 **Exercise 2.3**: Per-Attribute Sampling (Independent Distributions)
@@ -917,12 +913,12 @@ their validated outputs. A normal fixed-row sweep is not changed unless
    # Rank by |r| to identify top 2–3 parameters
    ```
 
-4. **Run OAT screening** (confirm sensitivity with fewer cases)
+4. **Run the multi-parameter factorial design** (inspect interactions)
    ```python
    from labeeb.sampler import OATConstructor
    oat = OATConstructor()
    oat.add_case(params)
-   # Execute ~13 cases
+   # Executes the product of the supplied parameter levels.
    ```
 
 5. **Run LHS uncertainty campaign** (Wilks-size sample)

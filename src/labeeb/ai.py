@@ -28,6 +28,7 @@ carry a format/version marker.
 """
 
 import base64
+import importlib
 import math
 import os
 import pickle
@@ -56,7 +57,7 @@ _SURROGATE_VERSION = 1
 def _require(package: str, pip_name: Optional[str] = None) -> Any:
     """Lazy-import helper with an actionable error message."""
     try:
-        return __import__(package)
+        return importlib.import_module(package)
     except ImportError as exc:  # pragma: no cover - environment dependent
         raise OptimizationError(
             f"{package} is required for this operation but is not installed; "
@@ -391,6 +392,9 @@ class NeuralMLPSurrogate:
 
     def fit_from_history(self, history: Sequence[EvaluationRecord]) -> "NeuralMLPSurrogate":
         torch = self._ensure_torch()
+        # Construction may be separated from fitting; reset here so each fit
+        # starts from the same weights even when several models are trained.
+        torch.manual_seed(self.seed)
         records = _records_from_history(history)
         names = list(self.var_names)
         X = torch.tensor(
@@ -434,8 +438,9 @@ class NeuralMLPSurrogate:
         torch = self._ensure_torch()
         if self._net is None:
             raise OptimizationError("cannot save an unfitted neural surrogate")
-        buffer = bytearray()
-        torch.save(self._net.state_dict(), buffer)  # type: ignore[arg-type]
+        import io
+        buffer = io.BytesIO()
+        torch.save(self._net.state_dict(), buffer)
         envelope = {
             "format": _SURROGATE_FORMAT,
             "kind": "mlp",
@@ -444,7 +449,7 @@ class NeuralMLPSurrogate:
             "seed": self.seed,
             "epochs": self.epochs,
             "hidden": self.hidden,
-            "state": base64.b64encode(bytes(buffer)).decode("ascii"),
+            "state": base64.b64encode(buffer.getvalue()).decode("ascii"),
             "mean": self._X_mean.tolist(),
             "std": self._X_std.tolist(),
         }
@@ -480,7 +485,9 @@ class NeuralMLPSurrogate:
             torch.nn.ReLU(),
             torch.nn.Linear(instance.hidden, 1),
         )
-        net.load_state_dict(torch.load(base64.b64decode(envelope["state"])))  # type: ignore[arg-type]
+        import io
+        state_bytes = base64.b64decode(envelope["state"])
+        net.load_state_dict(torch.load(io.BytesIO(state_bytes)))
         instance._net = net
         instance._X_mean = torch.tensor(envelope["mean"], dtype=torch.float32)
         instance._X_std = torch.tensor(envelope["std"], dtype=torch.float32)

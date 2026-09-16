@@ -355,6 +355,23 @@ fuel_types = sampler.get_random_sample(n=100)
 stats = sampler.stat(m=1000)
 ```
 
+For variables with a shared upper sum limit, `SimplexDOE` samples throughout
+the feasible simplex, including points below the total limit:
+
+```python
+from labeeb import SimplexDOE
+
+thickness = SimplexDOE(total=100, min_values=[5, 10, 0], seed=42).generate(
+    n_samples=50, n_vars=3
+)
+# Every row satisfies thickness[:, i] >= min_values[i] and row.sum() <= 100.
+```
+
+Optional polynomial, Gaussian-process, and radial-basis response surfaces are
+available from `labeeb.surrogates`. Install them with
+`python -m pip install -e ".[surrogate]"`; optional GP and RBF engines are
+imported only when fitted.
+
 Use `FOATConstructor` for all parameter combinations, `OATConstructor` for
 baseline-based sensitivity screening, and independent per-attribute samplers
 when each input should follow its own probability distribution. OAT varies one

@@ -94,9 +94,10 @@ db = Database(
 ```
 
 `n` is the total sample count when there are no OAT attributes. When OAT
-attributes are present, `n` is the number of random replicates for each row of
-the one-at-a-time design. Multiple OAT attributes use the first value of each
-as the shared baseline and vary one attribute per design row. Built-in random
+attributes are present, `n` is the number of random replicates for each design
+row. A single OAT attribute produces baseline plus one-at-a-time variations;
+multiple OAT attributes produce a full factorial product. In this example,
+`z` and `kk` produce 6 design rows, so `n=10` creates 60 rows. Built-in random
 distributions share the seeded generator; derived functions receive each row
 as a dictionary after sampled and constant values are ready.
 
@@ -549,6 +550,25 @@ before calling them when legacy reproducibility is required. For isolated
 seeded generation, prefer `latin_hypercube_sample`,
 `correlated_normal_sample`, or `truncated_normal_sample`, which accept a
 `seed`/`rng` argument.
+
+For mixture proportions or layer thicknesses with a total upper bound,
+`SimplexDOE` samples uniformly throughout the feasible simplex. It includes
+interior points, not only points whose values sum exactly to the maximum:
+
+```python
+from labeeb import SimplexDOE
+
+thickness = SimplexDOE(total=100, min_values=[5, 10, 0], seed=42).generate(
+    n_samples=50,
+    n_vars=3,
+)
+assert (thickness >= [5, 10, 0]).all()
+assert (thickness.sum(axis=1) <= 100).all()
+```
+
+The number of minima must match `n_vars`; a total equal to the sum of minima
+produces that single feasible point for every sample. Invalid limits raise
+`SamplingError`.
 
 ### Correlated & Truncated Sampling (V2-UQ)
 Joint draws with correlation and physically bounded marginals:
@@ -1689,6 +1709,23 @@ objectives are recorded as failures and never become the best; maximize via
 `labeeb.ai` layers external engines *without importing them at module load*
 — the core stays lightweight, and missing engines raise
 `OptimizationError` with an install hint:
+
+Additional response surfaces are available from `labeeb.surrogates`:
+`PolynomialSurrogate` needs only NumPy; `GaussianProcessSurrogate` needs
+scikit-learn; `RadialBasisSurrogate` needs SciPy. Install both optional engines
+with `python -m pip install -e ".[surrogate]"`. These models validate finite,
+aligned training data and provide `predict`; the Gaussian process also provides
+`predict_with_uncertainty`.
+
+```python
+import numpy as np
+from labeeb.surrogates import PolynomialSurrogate
+
+X = np.array([[0.0], [0.5], [1.0]])
+y = np.array([1.0, 1.5, 2.0])
+response = PolynomialSurrogate(degree=1, log_transform=False).fit(X, y)
+prediction = response.predict(np.array([0.25]))  # one query row -> shape (1,)
+```
 
 These integrations are optional and are not required for normal campaign,
 sampling, or database workflows. Install only the engine needed by your case
