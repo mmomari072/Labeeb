@@ -797,16 +797,17 @@ case.database = db
 case.launch()
 ```
 
-#### Attribute Resolution with `resolve_attribute_value()`
+#### Attribute Resolution
 
-During flag replacement, Labeeb resolves attributes in this order:
+**During flag replacement**, Labeeb resolves attributes in this order:
 
 1. **Check Database**: If attribute exists in the row, use that value
 2. **Check Dynamic**: If not in database, compute using registered function
 3. **Error**: If not found in either, raise `CaseExecutionError`
 
-You can also resolve attributes programmatically:
+**For programmatic access**, you can use two methods:
 
+**Method 1: Manual row fetch + resolve**
 ```python
 # Get a single row
 row = db.get_row(0)
@@ -815,6 +816,29 @@ row = db.get_row(0)
 layer1_val = case.resolve_attribute_value('layer1', row)  # From database
 layer3_val = case.resolve_attribute_value('layer3', row)  # Computed dynamically
 ```
+
+**Method 2: Convenience method by row ID (recommended)**
+```python
+# Get dynamic attribute value by row ID (no manual row fetch needed)
+layer3_val = case.get_dynamic_attribute_value('layer3', 0)
+dose = case.get_dynamic_attribute_value('total_dose', 2)
+config = case.get_dynamic_attribute_value('config_id', 1)
+
+# Works with any attribute (database or dynamic)
+layer1_val = case.get_dynamic_attribute_value('layer1', 0)
+```
+
+The `get_dynamic_attribute_value()` method is a convenience wrapper that:
+- Automatically fetches the row from the database
+- Resolves the attribute value
+- Returns the computed value
+- Provides clear error messages if row ID is invalid
+
+**Use cases:**
+- Query specific rows during optimization loops
+- Generate summary tables of dynamic values  
+- Find optimal rows based on computed attributes
+- Post-execution analysis without manual row fetching
 
 #### Method Chaining
 
