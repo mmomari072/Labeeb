@@ -850,6 +850,80 @@ case.register_dynamic_attribute('layer3', lambda row: 100 - row['layer1'] - row[
     .register_dynamic_attribute('config_id', lambda row: f"CONFIG_{row['__id__']:03d}")
 ```
 
+#### Dynamic Attributes with Dependencies
+
+Dynamic attributes can reference other dynamic (or database) attributes using an optional `resolve` parameter:
+
+```python
+# Style 1: Original - no dependencies (still works)
+case.register_dynamic_attribute(
+    'layer3',
+    lambda row: 100 - (row['layer1'] + row['layer2'])
+)
+
+# Style 2: With single dependency
+case.register_dynamic_attribute(
+    'config_id',
+    lambda row, resolve: f"CONFIG_{row['layer1']:.0f}_{resolve('layer3'):.0f}"
+)
+
+# Style 3: With multiple dependencies
+case.register_dynamic_attribute(
+    'summary',
+    lambda row, resolve: (
+        f"Material: Al={row['layer1']:.1f}, Pb={resolve('layer3'):.1f}, "
+        f"Config={resolve('config_id')}"
+    )
+)
+
+# Style 4: Chained dependencies (depends on dependent attributes)
+case.register_dynamic_attribute(
+    'total_thickness',
+    lambda row, resolve: resolve('layer3') + row['layer1'] + row['layer2']
+)
+
+case.register_dynamic_attribute(
+    'detailed_summary',
+    lambda row, resolve: f"Total={resolve('total_thickness'):.0f}mm, {resolve('summary')}"
+)
+```
+
+**How it works:**
+1. Function signature is inspected at runtime
+2. If lambda has 2+ parameters or includes `resolve`, a resolver is passed
+3. `resolve('attr_name')` computes and returns any attribute value
+4. Works with database attributes, dynamic attributes, and chained dependencies
+5. Fully backward compatible with existing code (no dependencies)
+
+**Benefits:**
+- No code duplication - dependencies computed only once
+- Readable, maintainable dependency declarations
+- Automatic recursive resolution for unlimited nesting
+- Supports complex multi-level dependency chains
+- Clean separation of concerns
+
+**Dependency types supported:**
+```python
+# Database → Database
+lambda row: row['layer1'] + row['layer2']
+
+# Database → Dynamic
+lambda row, resolve: row['layer1'] + resolve('layer3')
+
+# Dynamic → Dynamic (single level)
+lambda row, resolve: resolve('layer3') * 2
+
+# Dynamic → Dynamic → Dynamic (multi-level chain)
+lambda row, resolve: resolve('detailed_summary') + resolve('other_summary')
+```
+
+**Best practices:**
+- Keep lambdas simple and focused
+- Avoid circular dependencies (A depends on B depends on A)
+- Use meaningful attribute names
+- Document complex dependency chains with comments
+- Test edge cases with missing attributes
+
 #### Important Notes
 
 **Dependency Between Dynamic Attributes:**
