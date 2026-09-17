@@ -13,11 +13,41 @@ The `Database.filter()` method now supports an optional `save` parameter that au
 
 ---
 
-## Two Methods
+## Three Methods
 
-### Method 1: filter() with save parameter
+### Method 1: filter() with return_data for RAM-based execution
 
-Filter data and save in one call:
+Filter data and return as dict (no Database object creation):
+
+```python
+from labeeb import Database, Case
+
+db = Database(name="study", data={
+    "temperature": [300, 350, 400, 425, 450],
+    "pressure": [100, 102, 105, 108, 110]
+})
+
+# Filter and get data dict directly (fastest for execution)
+filtered_data = db.filter(
+    return_data=True,
+    temperature__gt=350
+)
+
+# Use filtered data directly for execution
+case = Case("thermal_study")
+case.database = Database(name="execution", data=filtered_data)
+case.launch()
+```
+
+**Advantages:**
+- No intermediate Database object creation
+- Fastest path from filter → execution
+- Memory efficient for large datasets
+- Returns `{column_name: [values]}` dict ready for Database construction
+
+### Method 2: filter() with save parameter
+
+Filter data and save to file in one call:
 
 ```python
 from labeeb import Database
@@ -36,9 +66,9 @@ filtered = db.filter(
 print(f"Filtered {len(filtered)} cases to high_temp_cases.csv")
 ```
 
-### Method 2: filter_and_save() convenience method
+### Method 3: filter_and_save() convenience method
 
-Explicit two-step operation (same result, clearer intent):
+Explicit filter+save operation (clearer when save is the main goal):
 
 ```python
 # Filter and save - clearer when save is the main goal
@@ -52,6 +82,35 @@ filtered = db.filter_and_save(
 ---
 
 ## Usage Examples
+
+### RAM-Based Execution (Most Efficient)
+
+**Direct data dict for execution:**
+
+```python
+# Get filtered data as dict (no Database object overhead)
+filtered_data = db.filter(return_data=True, temperature__gt=350)
+
+# Create execution database from filtered data
+case = Case("thermal_study")
+case.database = Database(name="execution", data=filtered_data)
+case.launch()  # Execute with filtered data
+```
+
+**Combining return_data with file save:**
+
+```python
+# Get filtered data AND save to file in one operation
+filtered_data = db.filter(
+    save="execution_backup.csv",  # Save for reproducibility
+    return_data=True,              # Also return data dict
+    temperature__gt=350
+)
+
+# Use data dict immediately for execution
+case.database = Database(data=filtered_data)
+case.launch()
+```
 
 ### Basic Filtering and Saving
 
@@ -235,16 +294,20 @@ print(f"Aluminum: {len(aluminum_cases)} cases")
 
 ## API Reference
 
-### filter(save=None, **conditions)
+### filter(save=None, return_data=False, **conditions)
 
 Filter database and optionally save filtered data.
 
 **Parameters:**
 - `save` (str, optional): File path for saving filtered data. Format auto-detected from extension.
+- `return_data` (bool, default False): If True, return filtered data as dict instead of Database object.
+  - Useful for RAM-based execution without Database object overhead
+  - Returns `{column_name: [values]}` ready for Database construction
 - `**conditions`: Filtering conditions (column_name=value or column__operator=value)
 
 **Returns:**
-- New `Database` with filtered rows (saved to file if `save` specified)
+- If `return_data=False`: New `Database` with filtered rows (saved to file if `save` specified)
+- If `return_data=True`: Dictionary `{column_name: [values]}` (saved to file if `save` specified)
 
 **Operators:**
 - `__gt` - Greater than
@@ -263,14 +326,24 @@ Filter database and optionally save filtered data.
 **Examples:**
 
 ```python
-# Filter without saving
+# Filter without saving (returns Database object)
 filtered = db.filter(temperature__gt=350)
+
+# Filter and return data dict (fastest for execution)
+filtered_data = db.filter(return_data=True, temperature__gt=350)
 
 # Filter and save
 filtered = db.filter(
     save="high_temp.csv",
     temperature__gt=350,
     pressure__lte=110
+)
+
+# Filter, save, and return data (both operations in one call)
+filtered_data = db.filter(
+    save="results.csv",
+    return_data=True,
+    temperature__gt=350
 )
 
 # Filter with callable
