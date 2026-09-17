@@ -3,6 +3,7 @@ Case module to define case configuration, directory structure,
 input processing, simulation runs, and parsing outputs.
 """
 
+import json
 import logging
 import os
 import shlex
@@ -645,6 +646,9 @@ class Case(CoupledUnit):
         for f in self.post_functions:
             f(self, **kwargs)
 
+        # Generate case_info.json with timestamped execution commands
+        self._save_case_info_json()
+
         timer.toc()
         return self
 
@@ -1157,6 +1161,63 @@ class Case(CoupledUnit):
         self._parse_kwargs(**kwargs)
         self._validate_failure_policies()
         return self
+
+    def _generate_case_info_json(self) -> Dict[str, Any]:
+        """Generate case metadata with timestamped execution commands."""
+        from datetime import datetime
+
+        row_data = self.database.get_row(self.case_id) if self.database else {}
+
+        case_info = {
+            "case_id": self.case_id,
+            "case_name": self.name,
+            "timestamp": datetime.now().isoformat(),
+            "database_attributes": dict(row_data) if hasattr(row_data, 'items') else row_data.to_dict() if hasattr(row_data, 'to_dict') else {},
+            "dynamic_attributes_values": {
+                attr_name: self.get_dynamic_attribute_value(attr_name, row_data)
+                for attr_name in self.dynamic_attributes.keys()
+            } if hasattr(self, 'dynamic_attributes') and self.dynamic_attributes else {},
+            "execution": {
+                "status": "success" if not getattr(self, '_case_failed', False) else "failed",
+                "start_time": self.execution_history[0]["timestamp"] if self.execution_history else None,
+                "end_time": self.execution_history[-1]["timestamp"] if self.execution_history else None,
+                "commands_executed": [
+                    {
+                        "command": cmd["command"],
+                        "timestamp": cmd["timestamp"],
+                        "duration_seconds": cmd.get("duration_seconds"),
+                        "exit_code": cmd["exit_code"],
+                        "status": cmd["status"],
+                    }
+                    for cmd in self.execution_history
+                ],
+                "exit_codes": [cmd["exit_code"] for cmd in self.execution_history],
+            },
+            "outputs": self.outputs,
+            "metadata": {
+                "case_directory": str(self.current_case_dir),
+                "user": os.getenv("USER", "unknown"),
+                "run_type": self.run_type,
+                "version": getattr(self, "__version__", "unknown"),
+            },
+        }
+        return case_info
+
+    def _save_case_info_json(self) -> None:
+        """Save case_info.json file in the case directory with timestamped commands."""
+        import json
+
+        if not self.current_case_dir or not os_ops.isdir(self.current_case_dir):
+            return
+
+        try:
+            case_info = self._generate_case_info_json()
+            info_path = os.path.join(self.current_case_dir, "case_info.json")
+            with open(info_path, "w", encoding="utf-8") as f:
+                json.dump(case_info, f, indent=2, default=str)
+            logger.debug(f"Saved case_info.json for case {self.case_id}")
+        except Exception as e:
+            logger.warning(f"Failed to save case_info.json: {e}")
 
     def update_db(self, **kwargs: Any) -> None:
         """Mock method for updating database in subsequent couplers."""

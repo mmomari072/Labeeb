@@ -1,0 +1,24 @@
+{
+  "case_id": 0,
+  "case_name": "relap",
+  "timestamp": "2026-09-17T19:10:19.729871",
+  "database_attributes": {
+    "POWER": 20.0,
+    "FLOW": 1200.0
+  },
+  "dynamic_attributes_values": {},
+  "execution": {
+    "status": "success",
+    "start_time": null,
+    "end_time": null,
+    "commands_executed": [],
+    "exit_codes": []
+  },
+  "outputs": {},
+  "metadata": {
+    "case_directory": "/home/omari/codes/Codes/MyCodes/labeeb/Labeeb/coupling_omari_test/coupling_iteration_0/omari/case_0",
+    "user": "omari",
+    "run_type": "read_only",
+    "version": "unknown"
+  }
+}
