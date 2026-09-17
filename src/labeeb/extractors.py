@@ -214,6 +214,7 @@ class Harvester:
     name: str
     file_target: Union[str, Path]
     pattern: Union[str, Callable[[Path], Any]]
+    filter: Optional[Callable[[Any], Any]] = None
     transform: Optional[Callable[[Any], Any]] = None
     aggregation: str = "all"
     optional: bool = False
@@ -236,7 +237,9 @@ class Harvester:
                 return None
             raise ExtractionError(f"Target output file '{target}' does not exist for harvester '{self.name}'")
         raw = run_extractor(target, self.pattern)
-        # Apply transform first, then aggregation
+        # Apply filter first, then transform, then aggregation
+        if self.filter is not None:
+            raw = self.filter(raw)
         if self.transform is not None:
             raw = self.transform(raw)
         # Apply aggregation
@@ -252,11 +255,12 @@ class CsvHarvester(Harvester):
         name: str,
         file_target: Union[str, Path],
         column: str,
+        filter: Optional[Callable[[Any], Any]] = None,
         transform: Optional[Callable[[Any], Any]] = None,
         aggregation: str = "all",
         optional: bool = False,
     ) -> None:
-        super().__init__(name=name, file_target=file_target, pattern=column, transform=transform, optional=optional)
+        super().__init__(name=name, file_target=file_target, pattern=column, filter=filter, transform=transform, optional=optional)
         self.column = column
         self.aggregation = aggregation
 
@@ -267,6 +271,8 @@ class CsvHarvester(Harvester):
                 return None
             raise ExtractionError(f"CSV file '{target}' does not exist for harvester '{self.name}'")
         raw = extract_csv(target, self.column)
+        if self.filter is not None:
+            raw = self.filter(raw)
         if self.transform is not None:
             raw = self.transform(raw)
         return apply_aggregation(raw, self.aggregation)
@@ -280,11 +286,12 @@ class JsonHarvester(Harvester):
         name: str,
         file_target: Union[str, Path],
         key: str,
+        filter: Optional[Callable[[Any], Any]] = None,
         transform: Optional[Callable[[Any], Any]] = None,
         aggregation: str = "all",
         optional: bool = False,
     ) -> None:
-        super().__init__(name=name, file_target=file_target, pattern=key, transform=transform, optional=optional)
+        super().__init__(name=name, file_target=file_target, pattern=key, filter=filter, transform=transform, optional=optional)
         self.key = key
         self.aggregation = aggregation
 
@@ -295,6 +302,8 @@ class JsonHarvester(Harvester):
                 return None
             raise ExtractionError(f"JSON file '{target}' does not exist for harvester '{self.name}'")
         raw = extract_json(target, self.key)
+        if self.filter is not None:
+            raw = self.filter(raw)
         if self.transform is not None:
             raw = self.transform(raw)
         return apply_aggregation(raw, self.aggregation)
@@ -308,11 +317,12 @@ class RegexHarvester(Harvester):
         name: str,
         file_target: Union[str, Path],
         pattern: str,
+        filter: Optional[Callable[[Any], Any]] = None,
         transform: Optional[Callable[[Any], Any]] = None,
         aggregation: str = "all",
         optional: bool = False,
     ) -> None:
-        super().__init__(name=name, file_target=file_target, pattern=pattern, transform=transform, optional=optional)
+        super().__init__(name=name, file_target=file_target, pattern=pattern, filter=filter, transform=transform, optional=optional)
         self.aggregation = aggregation
 
     def harvest(self, base_dir: Union[str, Path] = "") -> Any:
@@ -322,6 +332,8 @@ class RegexHarvester(Harvester):
                 return None
             raise ExtractionError(f"Text file '{target}' does not exist for harvester '{self.name}'")
         raw = extract_regex(target, self.pattern)
+        if self.filter is not None:
+            raw = self.filter(raw)
         if self.transform is not None:
             raw = self.transform(raw)
         return apply_aggregation(raw, self.aggregation)
@@ -336,11 +348,12 @@ class ExcelHarvester(Harvester):
         file_target: Union[str, Path],
         column: str,
         sheet: Union[str, int] = 0,
+        filter: Optional[Callable[[Any], Any]] = None,
         transform: Optional[Callable[[Any], Any]] = None,
         aggregation: str = "all",
         optional: bool = False,
     ) -> None:
-        super().__init__(name=name, file_target=file_target, pattern=column, transform=transform, optional=optional)
+        super().__init__(name=name, file_target=file_target, pattern=column, filter=filter, transform=transform, optional=optional)
         self.column = column
         self.sheet = sheet
         self.aggregation = aggregation
@@ -352,6 +365,8 @@ class ExcelHarvester(Harvester):
                 return None
             raise ExtractionError(f"Excel file '{target}' does not exist for harvester '{self.name}'")
         raw = extract_excel(target, self.column, sheet=self.sheet)
+        if self.filter is not None:
+            raw = self.filter(raw)
         if self.transform is not None:
             raw = self.transform(raw)
         return apply_aggregation(raw, self.aggregation)
@@ -365,11 +380,12 @@ class CallableHarvester(Harvester):
         name: str,
         file_target: Union[str, Path],
         extractor: Callable[[Path], Any],
+        filter: Optional[Callable[[Any], Any]] = None,
         transform: Optional[Callable[[Any], Any]] = None,
         aggregation: str = "all",
         optional: bool = False,
     ) -> None:
-        super().__init__(name=name, file_target=file_target, pattern=extractor, transform=transform, optional=optional)
+        super().__init__(name=name, file_target=file_target, pattern=extractor, filter=filter, transform=transform, optional=optional)
         self.aggregation = aggregation
 
     def harvest(self, base_dir: Union[str, Path] = "") -> Any:
@@ -379,6 +395,8 @@ class CallableHarvester(Harvester):
                 return None
             raise ExtractionError(f"Target file '{target}' does not exist for harvester '{self.name}'")
         raw = self.pattern(target) if callable(self.pattern) else run_extractor(target, self.pattern)
+        if self.filter is not None:
+            raw = self.filter(raw)
         if self.transform is not None:
             raw = self.transform(raw)
         return apply_aggregation(raw, self.aggregation)
@@ -391,10 +409,11 @@ class BulkCsvHarvester(Harvester):
         self,
         name: str,
         file_target: Union[str, Path],
+        filter: Optional[Callable[[dict], dict]] = None,
         transform: Optional[Callable[[dict], Any]] = None,
         optional: bool = False,
     ) -> None:
-        super().__init__(name=name, file_target=file_target, pattern="*", transform=transform, optional=optional)
+        super().__init__(name=name, file_target=file_target, pattern="*", filter=filter, transform=transform, optional=optional)
 
     def harvest(self, base_dir: Union[str, Path] = "") -> dict:
         """Return all columns as {column_name: [values], ...}"""
@@ -408,6 +427,8 @@ class BulkCsvHarvester(Harvester):
             result = {col: dataframe[col].tolist() for col in dataframe.columns}
         except Exception as exc:
             raise ExtractionError(f"Failed to read CSV output from '{target}': {exc}") from exc
+        if self.filter is not None:
+            result = self.filter(result)
         return self.transform(result) if self.transform is not None else result
 
 
@@ -419,10 +440,11 @@ class MultiColumnCsvHarvester(Harvester):
         name: str,
         file_target: Union[str, Path],
         columns: list,
+        filter: Optional[Callable[[dict], dict]] = None,
         transform: Optional[Callable[[dict], Any]] = None,
         optional: bool = False,
     ) -> None:
-        super().__init__(name=name, file_target=file_target, pattern=columns, transform=transform, optional=optional)
+        super().__init__(name=name, file_target=file_target, pattern=columns, filter=filter, transform=transform, optional=optional)
         self.columns = columns
 
     def harvest(self, base_dir: Union[str, Path] = "") -> dict:
@@ -442,6 +464,8 @@ class MultiColumnCsvHarvester(Harvester):
             raise
         except Exception as exc:
             raise ExtractionError(f"Failed to read CSV output from '{target}': {exc}") from exc
+        if self.filter is not None:
+            result = self.filter(result)
         return self.transform(result) if self.transform is not None else result
 
 
@@ -453,10 +477,11 @@ class PatternCsvHarvester(Harvester):
         name: str,
         file_target: Union[str, Path],
         column_pattern: str,
+        filter: Optional[Callable[[dict], dict]] = None,
         transform: Optional[Callable[[dict], Any]] = None,
         optional: bool = False,
     ) -> None:
-        super().__init__(name=name, file_target=file_target, pattern=column_pattern, transform=transform, optional=optional)
+        super().__init__(name=name, file_target=file_target, pattern=column_pattern, filter=filter, transform=transform, optional=optional)
         self.column_pattern = column_pattern
 
     def harvest(self, base_dir: Union[str, Path] = "") -> dict:
@@ -477,6 +502,8 @@ class PatternCsvHarvester(Harvester):
             raise
         except Exception as exc:
             raise ExtractionError(f"Failed to read CSV output from '{target}': {exc}") from exc
+        if self.filter is not None:
+            result = self.filter(result)
         return self.transform(result) if self.transform is not None else result
 
 
@@ -487,10 +514,11 @@ class DataFrameHarvester(Harvester):
         self,
         name: str,
         file_target: Union[str, Path],
+        filter: Optional[Callable[[Any], Any]] = None,
         transform: Optional[Callable[[Any], Any]] = None,
         optional: bool = False,
     ) -> None:
-        super().__init__(name=name, file_target=file_target, pattern=None, transform=transform, optional=optional)
+        super().__init__(name=name, file_target=file_target, pattern=None, filter=filter, transform=transform, optional=optional)
 
     def harvest(self, base_dir: Union[str, Path] = "") -> "pd.DataFrame":
         """Return entire DataFrame for custom processing"""
@@ -503,6 +531,8 @@ class DataFrameHarvester(Harvester):
             dataframe = pd.read_csv(target)
         except Exception as exc:
             raise ExtractionError(f"Failed to read CSV output from '{target}': {exc}") from exc
+        if self.filter is not None:
+            dataframe = self.filter(dataframe)
         return self.transform(dataframe) if self.transform is not None else dataframe
 
 
