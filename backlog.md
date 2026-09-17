@@ -36,6 +36,29 @@
 - Documented all display methods: `to_dataframe()`, `rows`, `get_row()`, `plot()`, export
 - Users can now easily view database data in tabular format
 
+### ✅ Database Filter with Save Option for Execution Dataset Preparation
+**Commits:** `1c8d63d`, `c45c3e5`  
+**Date:** 2026-09-17
+
+- Enhance `Database.filter()` method with optional `save` parameter
+- Automatically export filtered data to CSV/JSON/Parquet
+- Add `filter_and_save()` convenience method for explicit filtering+saving
+- Support format auto-detection from file extension (.csv, .json, .parquet, .pq)
+- Enable creation of execution-ready datasets:
+  - Filter to relevant cases before execution
+  - Create reproducible test/validation subsets
+  - Share filtered data with collaborators
+  - Reduce execution time by running only relevant cases
+- Support all filter operators and callable predicates
+- Documentation includes 4 real-world workflow examples:
+  - Create execution dataset for case runs
+  - Split data for training/validation
+  - Multi-stage progressive filtering
+  - Dataset comparison by material/parameter
+- Integration patterns with Case.launch() for filtered execution
+
+**File:** `docs/DATABASE_FILTER_SAVE.md` (438 lines)
+
 ### ✅ Case Info JSON with Timestamped Execution Commands
 **Commits:** `58a3065`, `196785c`  
 **Date:** 2026-09-17
