@@ -55,7 +55,13 @@ class Timer:
     @staticmethod
     def convert_sec_to_time(seconds: float) -> Tuple[int, int, int, float]:
         """
-        Convert seconds into days, hours, minutes, seconds, fraction.
+        Convert seconds into hours, minutes, seconds, and fractional milliseconds.
+
+        Args:
+            seconds: Total elapsed time in seconds.
+
+        Returns:
+            Tuple of (hours, minutes, seconds, fractional_milliseconds)
         """
         ss = seconds
         parts = []
@@ -64,19 +70,16 @@ class Timer:
             parts.append(val)
             ss %= divisor
         # parts: [days, hours, minutes, seconds]
-        # Return hours, minutes, seconds, and the fractional remainder
+        # ss now contains the fractional remainder
+
+        # Convert days and hours into total hours
         hours = parts[0] * 24 + parts[1]
         minutes = parts[2]
         seconds_int = parts[3]
-        fractional = seconds_int + ss
-        return hours, minutes, int(ss), (seconds - int(seconds)) * 1000.0
-        # Actually let's return hours, minutes, seconds, and fractional seconds simply:
-        # hour = int(seconds // 3600)
-        # minute = int((seconds % 3600) // 60)
-        # second = int(seconds % 60)
-        # frac = (seconds - int(seconds)) * 1000
-        # return hour, minute, second, frac
-        # Let's do that simple calculation!
+
+        # Return hours, minutes, seconds, and fractional milliseconds
+        frac_milliseconds = ss * 1000.0
+        return hours, minutes, seconds_int, frac_milliseconds
 
 
 def format_seconds(seconds: float) -> str:
