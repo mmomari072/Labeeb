@@ -127,6 +127,15 @@ class Campaign:
 
     A campaign is intentionally usable from a case-study Python file.  The
     command-line interface is only a thin adapter around this class.
+
+    Attributes:
+        manifest (CampaignManifest): Validated execution-agnostic manifest specification.
+        state_path (Path, optional): Path to campaign checkpoint state file.
+        output_catalog (Path, optional): Path to output catalog SQLite/file database.
+        live_plot (LivePlotAdapter, optional): Live plotting integration adapter.
+        status_registry (StatusRegistry): Case execution state tracker registry.
+        memory (CampaignMemory): Shared inter-case memory backend.
+        publisher (BasePublisher, optional): Event publisher for real-time progress updates.
     """
 
     def __init__(

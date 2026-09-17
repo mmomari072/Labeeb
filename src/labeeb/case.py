@@ -194,6 +194,35 @@ class Case(CoupledUnit):
     """
     Main manager for simulating sensitivity analysis cases.
     Pads files with mapped replacement flags, launches runs in separate subdirectories, and parses output files.
+
+    Attributes:
+        name (str): Case runner identifier.
+        database (Database, optional): Mapped parameter database containing sampled inputs.
+        FlagsMap (FlagsMap or dict): Mapping of placeholder tokens to Flag objects or attributes.
+        exe_cmd (list of str): List of executable commands to launch for each simulation case.
+        run_type (str): Directory and execution control strategy.
+            Supported modes:
+            - "new": Always execute simulation cases and replace/recreate case directories.
+            - "overwrite": Always execute simulation cases, reusing existing case directories without deleting.
+            - "continue": Execute simulation cases only if the target case directory does not already exist.
+            - "read_only": Do not execute simulations; only parse existing outputs from disk.
+        new (bool): Internal execution flag set according to ``run_type`` (True for "new", False otherwise).
+        main_dir (str): Absolute base working directory (defaults to current working directory).
+        run_case_main_dir (str): Main output subdirectory under ``main_dir`` where case runs reside.
+        run_case_sub_dir (str): Prefix name for individual case run subdirectories (e.g. "case_0").
+        current_case_dir (str, optional): Path to the active case execution directory.
+        objects_to_be_copied (list of str): Additional static files or directories copied into each case folder before launch.
+        input_files (list of File): List of template File objects processed during case generation.
+        harvesters (dict): Custom harvester functions or extraction specs mapped by output name.
+        output_files (dict): Dictionary mapping output file paths to lists of column names to harvest.
+        outputs (dict): Parsed results dictionary mapping output column names to lists of extracted values.
+        outputs_db (pd.DataFrame): Combined Pandas DataFrame containing input parameter rows and harvested output data.
+        execution_backend (ExecutionBackend): Execution engine used to run CLI commands (e.g. LocalExecutionBackend).
+        command_failure_policy (str): Subprocess failure behavior ("stop", "continue", or "retry").
+        harvest_failure_policy (str): Output harvesting failure behavior ("stop" or "continue").
+        max_attempts (int): Maximum execution retries when command_failure_policy="retry".
+        shell (bool, optional): Subprocess shell execution mode (True for shell string commands, False/None for argv execution).
+        cancelled (bool): Cancellation status flag for early termination.
     """
 
     def __init__(self, name: str = "", output_files: Optional[Dict[str, List[str]]] = None, **kwargs: Any):

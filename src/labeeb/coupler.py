@@ -24,6 +24,26 @@ class Coupler(CoupledUnit, dict):
     A `Coupler` is itself a `CoupledUnit`, so it can be nested as a child
     unit inside another `Coupler` (sub-coupling), alongside plain `Case`
     children -- both are composed uniformly via `add_case`/`add_cases`.
+
+    Attributes:
+        name (str): Coupler identifier name.
+        description (str, optional): Explanation or metadata for the coupled workflow.
+        database (Database, optional): Shared Database instance managing coupling parameters.
+        cases (list of CoupledUnit): Registered coupled units (Case or nested Coupler instances).
+        case_mappings (dict): Mapping of child unit names to list of transferred attribute names.
+        run_type (str): Coupling execution strategy mode ("new", "continue", "overwrite", or "read_only").
+            - "new": Delete previous coupling output directories and launch fresh simulations.
+            - "continue": Reuse existing coupling steps and execute only uncompleted steps/cases.
+            - "overwrite": Keep directory layout but overwrite simulation cases in place.
+            - "read_only": Skip simulation execution; only harvest output files.
+        new (bool): Internal execution flag set according to ``run_type``.
+        main_dir (str): Base working directory for coupling runs.
+        run_case_main_dir (str): Subdirectory name for storing coupling iteration folders.
+        run_case_sub_dir (str): Subdirectory prefix for coupling iterations (e.g. "coupling_iteration").
+        c_step (int, optional): Current coupling step index during execution.
+        case_name (str, optional): Name of the currently executing coupled case unit.
+        max_steps (int, optional): Maximum allowed outer coupling iterations.
+        case (CaseAccessor): Helper property to access child cases by attribute or index.
     """
 
     class CaseAccessor:

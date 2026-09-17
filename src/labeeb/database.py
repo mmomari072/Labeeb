@@ -160,6 +160,13 @@ class Attribute(list):
     """
     A list subclass representing a column/attribute in the database.
     Operates like a Series, utilizing Pandas internally for element-wise calculations.
+
+    Attributes:
+        name (str): Column attribute name identifier.
+        unit (str, optional): Physical or mathematical unit of measurement (e.g. "kg/m3", "K").
+        description (str, optional): Human-readable summary of what this attribute represents.
+        type (callable, optional): Target type caster for items in the column (e.g. float, int).
+        sampling (Normal, Uniform, OAT, Derived, or Constant, optional): Deferred sampling specification.
     """
 
     def __init__(
@@ -524,6 +531,13 @@ class Database(dict):
     """
     A custom dictionary mapping attribute names to Attribute columns.
     Behaves like a simple, lightweight DataFrame.
+
+    Attributes:
+        name (str, optional): Database identifier name.
+        description (str, optional): Summary description of the database.
+        db_filepath (str): Default path used when saving or loading the database.
+        auto_refresh (bool): Whether derived expression columns automatically re-evaluate upon query.
+        get (DataAccessor): Helper interface providing index/row access (.get[row_index] or .get.row(id)).
     """
 
     class DataAccessor:
