@@ -646,6 +646,146 @@ class Database(dict):
                 row_filter=row_filter, max_rejections=max_rejections
             )
 
+    def _rejection_sample_with_filter(
+        self, attrs: List[Attribute], deferred: List[Attribute], dependencies: Dict[str, List[str]],
+        spec_attrs: List[Attribute], rng: Any, row_count: int, row_filter: callable,
+        max_rejections: Optional[int], method: str, random_reuse: str, generated: Dict[str, List[Any]]
+    ) -> None:
+        """Rejection sampling: generate rows one-at-a-time until n valid rows collected.
+
+        Loop:
+            1. Sample ONE row from each attribute
+            2. Evaluate derived attributes
+            3. Check row_filter(row)
+            4. If valid → keep, if invalid → generate new row
+            5. Continue until n valid rows
+        """
+        if max_rejections is None:
+            max_rejections = row_count * 100
+
+        stats = {
+            "total_attempts": 0,
+            "total_accepted": 0,
+            "total_rejected": 0,
+            "acceptance_rate": 0.0,
+        }
+
+        # Get non-derived attributes for sampling
+        base_attrs = [a for a in attrs if not isinstance(a.sampling, Derived)]
+
+        # Initialize result columns
+        result_data: Dict[str, List[Any]] = {attr.name: [] for attr in base_attrs}
+
+        consecutive_rejections = 0
+
+        while len(result_data[base_attrs[0].name]) < row_count:
+            stats["total_attempts"] += 1
+
+            # Sample ONE row from all non-derived attributes
+            row_data: Dict[str, Any] = {}
+
+            try:
+                for attr in base_attrs:
+                    spec = attr.sampling
+
+                    if isinstance(spec, Constant):
+                        value = spec.value
+                    elif isinstance(spec, Uniform):
+                        value = rng.uniform(spec.low, spec.high)
+                    elif isinstance(spec, Normal):
+                        value = rng.normal(spec.mean, spec.std)
+                    elif callable(getattr(spec, "draw", None)):
+                        values = spec.draw(1, rng)
+                        value = values[0] if values else None
+                    elif hasattr(spec, "ppf"):
+                        prob = rng.random()
+                        value = spec.ppf(prob)
+                    else:
+                        raise DatabaseError(f"Cannot sample {attr.name}: unsupported sampling spec")
+
+                    row_data[attr.name] = value
+
+                # Evaluate derived attributes for this row
+                for attr in deferred:
+                    spec = attr.sampling
+
+                    if isinstance(spec.function, str):
+                        result = eval(spec.function, {"__builtins__": {}}, row_data)
+                    elif callable(spec.function):
+                        result = spec.function(row_data)
+                    else:
+                        result = spec.function
+
+                    row_data[attr.name] = result
+
+            except Exception as exc:
+                logger.debug(f"Sampling/derivation failed: {exc}")
+                consecutive_rejections += 1
+                if consecutive_rejections > max_rejections:
+                    raise DatabaseError(
+                        f"Rejection sampling: {consecutive_rejections} consecutive rejections; "
+                        f"check filter constraints or increase max_rejections"
+                    )
+                continue
+
+            # Apply filter to this row
+            try:
+                is_valid = row_filter(row_data)
+            except Exception as exc:
+                logger.debug(f"Row filter evaluation failed: {exc}")
+                is_valid = False
+
+            if is_valid:
+                # Keep this row
+                for attr_name, value in row_data.items():
+                    if attr_name in result_data:
+                        result_data[attr_name].append(value)
+                consecutive_rejections = 0
+                stats["total_accepted"] += 1
+            else:
+                # Reject and generate new row
+                stats["total_rejected"] += 1
+                consecutive_rejections += 1
+                if consecutive_rejections > max_rejections:
+                    raise DatabaseError(
+                        f"Rejection sampling: {consecutive_rejections} consecutive rejections; "
+                        f"check filter constraints or increase max_rejections"
+                    )
+
+        # Replace database columns with ONLY base attributes (derived will be recomputed)
+        for col_name, col_attr in list(self.items()):
+            if col_name in ("__db_index__", "__id__"):
+                continue
+            if col_name in result_data:
+                col_attr[:] = result_data[col_name]
+
+        # Update ID columns to match filtered row count
+        new_row_count = len(result_data[base_attrs[0].name])
+        if "__id__" in self:
+            id_attr = self["__id__"]
+            id_attr[:] = list(range(new_row_count))
+
+        if "__db_index__" in self:
+            idx_attr = self["__db_index__"]
+            idx_attr[:] = list(range(new_row_count))
+
+        # Recompute derived attributes on filtered rows
+        self.refresh_index()
+
+        # Force recomputation of all derived attributes on filtered rows
+        for attr in deferred:
+            if attr.name in self:
+                self.remove_derived_attribute(attr.name, drop_column=True)
+            self.add_derived_attribute(attr.name, attr.sampling.function,
+                                     dependencies=dependencies[attr.name],
+                                     unit=attr.unit, description=attr.description, Type=attr.type)
+
+        stats["acceptance_rate"] = (
+            stats["total_accepted"] / stats["total_attempts"]
+            if stats["total_attempts"] > 0 else 0.0
+        )
+        self.sampling_stats = stats
+
     def _apply_row_filter_during_sampling(
         self, attrs: List[Attribute], deferred: List[Attribute], dependencies: Dict[str, List[str]],
         generated: Dict[str, List[Any]], rng: Any, row_count: int, row_filter: callable,
@@ -1078,11 +1218,12 @@ class Database(dict):
                                            unit=attr.unit, description=attr.description, Type=attr.type)
                 pending = [item for item in pending if item is not attr]
 
-        # Apply row-by-row validation filter if provided (use incremental generation, not post-hoc filtering)
+        # Apply row-by-row validation filter if provided
         if row_filter is not None:
-            self._apply_row_filter_during_sampling(
-                attrs=attrs, deferred=deferred, dependencies=dependencies, generated=generated,
-                rng=rng, row_count=row_count, row_filter=row_filter, max_rejections=max_rejections
+            self._rejection_sample_with_filter(
+                attrs=attrs, deferred=deferred, dependencies=dependencies, spec_attrs=attrs,
+                rng=rng, row_count=row_count, row_filter=row_filter, max_rejections=max_rejections,
+                method=method, random_reuse=random_reuse, generated=generated
             )
 
     def validate(self) -> None:
