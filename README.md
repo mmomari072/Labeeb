@@ -479,6 +479,38 @@ recorded as `None` instead of failing the case. Case input templates are copied
 into `case_<id>` run directories and rendered there (flags, assignments,
 `${expr}`), leaving the original template untouched.
 
+Harvesters apply their optional `filter` first, then `transform`, and finally
+`aggregation`. This makes it easy to validate or select values before reducing
+them to a scalar:
+
+```python
+from labeeb.extractors import CsvHarvester
+
+peak = CsvHarvester(
+    name="peak_temp",
+    file_target="results.csv",
+    column="temperature",
+    filter=lambda values: [v for v in values if v >= 0],
+    aggregation="max",              # mean, median, min, max, sum, std, count...
+)
+```
+
+`AutoHarvester` selects the extractor from the file extension (`.csv`, `.json`,
+`.xlsx`/`.xls`, and text files). Supply `column` for CSV/Excel, `key` for a
+dotted JSON path, or `pattern` for a regular expression. Use `file_type` when
+the extension is missing or misleading:
+
+```python
+from labeeb.extractors import AutoHarvester
+
+metric = AutoHarvester(
+    name="keff", file_target="solver.out",
+    file_type="text", pattern=r"keff\s*=\s*([0-9.]+)", transform=float,
+    optional=True,
+)
+case.add_harvester(metric)
+```
+
 `CampaignStateStore` persists attempts for resume/retry workflows and prevents
 cache reuse when the input hash changes.
 

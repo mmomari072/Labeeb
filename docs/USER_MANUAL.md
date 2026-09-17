@@ -1018,8 +1018,8 @@ Outputs are declared explicitly — never guessed from the filesystem:
 * `output_files={"out.csv": ["keff", ...]}` declares *required* CSV columns;
   a missing file or column fails the case.
 * Harvesters declare named, typed extractions from a specific file:
-  `CsvHarvester`, `JsonHarvester`, `RegexHarvester`, `ExcelHarvester`, or
-  `CallableHarvester`. By default the target file is *required* (missing file ->
+  `CsvHarvester`, `JsonHarvester`, `RegexHarvester`, `ExcelHarvester`,
+  `CallableHarvester`, or `AutoHarvester`. By default the target file is *required* (missing file ->
   `ExtractionError`, failing the case). Set `optional=True` (on the harvester or
   via `Case.add_harvester(..., optional=True)`) to declare an *optional* output:
   when the file was not produced, the run records `None` for that metric instead
@@ -1296,6 +1296,40 @@ callable_harvester = CallableHarvester(
     file_target="summary.txt",
     extractor=lambda path: float(path.read_text().split("=")[1])
 )
+```
+
+#### Filtering, transformation, and aggregation
+
+CSV, JSON, Regex, Excel, and Callable harvesters accept optional `filter`, `transform`, and
+`aggregation` arguments. They run in that order. `filter` receives the raw
+extracted value, `transform` converts it to the desired type, and `aggregation`
+reduces a sequence using `first`, `last`, `min`, `max`, `mean`, `median`, `std`,
+`sum`/`integration`, or `count` (`all` is the default).
+
+```python
+temperature = CsvHarvester(
+    name="peak_temp", file_target="results.csv", column="temperature",
+    filter=lambda values: [v for v in values if v >= 0],
+    aggregation="max",
+)
+case.add_harvester(temperature)
+```
+
+#### Automatic file type detection
+
+`AutoHarvester` chooses CSV, JSON, Excel, or text extraction from the target
+file extension. Set `column`, `key`, or `pattern` for the selected format. Set
+`file_type` explicitly when needed; `optional=True` returns `None` when the
+file is absent.
+
+```python
+from labeeb.extractors import AutoHarvester
+
+keff = AutoHarvester(
+    name="keff", file_target="solver.out", file_type="text",
+    pattern=r"keff\s*=\s*([0-9.]+)", transform=float,
+)
+case.add_harvester(keff)
 ```
 
 ### Durable Output Catalog (`labeeb.outputs`)
