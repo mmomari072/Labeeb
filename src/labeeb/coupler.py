@@ -84,6 +84,26 @@ class Coupler(CoupledUnit, dict):
         def __dir__(self) -> List[str]:
             return ["working_case", "current_step", "list"] + self.list
 
+    @property
+    def run_type(self) -> str:
+        return self._run_type
+
+    @run_type.setter
+    def run_type(self, value: str) -> None:
+        if value not in {"new", "overwrite", "continue", "read_only"}:
+            raise CouplingError(f"Invalid run_type: {value!r}")
+        self._run_type = value
+
+    @property
+    def max_steps(self) -> Optional[int]:
+        return self._max_steps
+
+    @max_steps.setter
+    def max_steps(self, value: Optional[int]) -> None:
+        if value is not None and (not isinstance(value, int) or isinstance(value, bool) or value < 1):
+            raise CouplingError("max_steps must be None or a positive integer")
+        self._max_steps = value
+
     def __init__(self, name: str, **kwargs: Any):
         """
         Initialize Coupler.
@@ -126,11 +146,11 @@ class Coupler(CoupledUnit, dict):
         self.current_case_dir: Optional[str] = None
 
         self.new: bool = True
-        self.run_type: str = "new"
+        self._run_type = "new"
 
         self.c_step: Optional[int] = None
         self.case_name: Optional[str] = None
-        self.max_steps: Optional[int] = None
+        self._max_steps = None
 
         self._accessor = self.CaseAccessor(self)
         self._parse_kwargs(**kwargs)
