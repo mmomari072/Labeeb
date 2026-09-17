@@ -267,3 +267,125 @@ class CallableHarvester(Harvester):
             raise ExtractionError(f"Target file '{target}' does not exist for harvester '{self.name}'")
         raw = self.pattern(target) if callable(self.pattern) else run_extractor(target, self.pattern)
         return self.transform(raw) if self.transform is not None else raw
+
+
+class BulkCsvHarvester(Harvester):
+    """Harvest all columns from a CSV file as a dictionary."""
+
+    def __init__(
+        self,
+        name: str,
+        file_target: Union[str, Path],
+        transform: Optional[Callable[[dict], Any]] = None,
+        optional: bool = False,
+    ) -> None:
+        super().__init__(name=name, file_target=file_target, pattern="*", transform=transform, optional=optional)
+
+    def harvest(self, base_dir: Union[str, Path] = "") -> dict:
+        """Return all columns as {column_name: [values], ...}"""
+        target = self._resolve_target(base_dir)
+        if not target.exists():
+            if self.optional:
+                return {}
+            raise ExtractionError(f"CSV file '{target}' does not exist for harvester '{self.name}'")
+        try:
+            dataframe = pd.read_csv(target)
+            result = {col: dataframe[col].tolist() for col in dataframe.columns}
+        except Exception as exc:
+            raise ExtractionError(f"Failed to read CSV output from '{target}': {exc}") from exc
+        return self.transform(result) if self.transform is not None else result
+
+
+class MultiColumnCsvHarvester(Harvester):
+    """Harvest specific columns from a CSV file as a dictionary."""
+
+    def __init__(
+        self,
+        name: str,
+        file_target: Union[str, Path],
+        columns: list,
+        transform: Optional[Callable[[dict], Any]] = None,
+        optional: bool = False,
+    ) -> None:
+        super().__init__(name=name, file_target=file_target, pattern=columns, transform=transform, optional=optional)
+        self.columns = columns
+
+    def harvest(self, base_dir: Union[str, Path] = "") -> dict:
+        """Return specified columns as {column_name: [values], ...}"""
+        target = self._resolve_target(base_dir)
+        if not target.exists():
+            if self.optional:
+                return {}
+            raise ExtractionError(f"CSV file '{target}' does not exist for harvester '{self.name}'")
+        try:
+            dataframe = pd.read_csv(target)
+            missing = [col for col in self.columns if col not in dataframe.columns]
+            if missing:
+                raise ExtractionError(f"Columns {missing} missing in CSV output '{target}'")
+            result = {col: dataframe[col].tolist() for col in self.columns}
+        except ExtractionError:
+            raise
+        except Exception as exc:
+            raise ExtractionError(f"Failed to read CSV output from '{target}': {exc}") from exc
+        return self.transform(result) if self.transform is not None else result
+
+
+class PatternCsvHarvester(Harvester):
+    """Harvest columns matching a regex pattern from a CSV file."""
+
+    def __init__(
+        self,
+        name: str,
+        file_target: Union[str, Path],
+        column_pattern: str,
+        transform: Optional[Callable[[dict], Any]] = None,
+        optional: bool = False,
+    ) -> None:
+        super().__init__(name=name, file_target=file_target, pattern=column_pattern, transform=transform, optional=optional)
+        self.column_pattern = column_pattern
+
+    def harvest(self, base_dir: Union[str, Path] = "") -> dict:
+        """Return columns matching pattern as {column_name: [values], ...}"""
+        target = self._resolve_target(base_dir)
+        if not target.exists():
+            if self.optional:
+                return {}
+            raise ExtractionError(f"CSV file '{target}' does not exist for harvester '{self.name}'")
+        try:
+            dataframe = pd.read_csv(target)
+            pattern = re.compile(self.column_pattern)
+            matching_cols = [col for col in dataframe.columns if pattern.search(col)]
+            if not matching_cols:
+                raise ExtractionError(f"No columns matching pattern '{self.column_pattern}' in '{target}'")
+            result = {col: dataframe[col].tolist() for col in matching_cols}
+        except ExtractionError:
+            raise
+        except Exception as exc:
+            raise ExtractionError(f"Failed to read CSV output from '{target}': {exc}") from exc
+        return self.transform(result) if self.transform is not None else result
+
+
+class DataFrameHarvester(Harvester):
+    """Harvest entire DataFrame from a CSV file for custom processing."""
+
+    def __init__(
+        self,
+        name: str,
+        file_target: Union[str, Path],
+        transform: Optional[Callable[[Any], Any]] = None,
+        optional: bool = False,
+    ) -> None:
+        super().__init__(name=name, file_target=file_target, pattern=None, transform=transform, optional=optional)
+
+    def harvest(self, base_dir: Union[str, Path] = "") -> "pd.DataFrame":
+        """Return entire DataFrame for custom processing"""
+        target = self._resolve_target(base_dir)
+        if not target.exists():
+            if self.optional:
+                return pd.DataFrame()
+            raise ExtractionError(f"CSV file '{target}' does not exist for harvester '{self.name}'")
+        try:
+            dataframe = pd.read_csv(target)
+        except Exception as exc:
+            raise ExtractionError(f"Failed to read CSV output from '{target}': {exc}") from exc
+        return self.transform(dataframe) if self.transform is not None else dataframe

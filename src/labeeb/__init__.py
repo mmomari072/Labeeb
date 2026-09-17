@@ -34,12 +34,16 @@ from .analysis import AnalysisError, correlation_analysis, morris_screening, sob
 from .adaptive import AdaptiveSensitivityAnalysis, DesignPoint, ResultsPool, Phase
 from .sensitivity_loop import SensitivityAnalysisLoop, simple_sensitivity_with_feedback
 from .extractors import (
+    BulkCsvHarvester,
     CallableHarvester,
     CsvHarvester,
+    DataFrameHarvester,
     ExcelHarvester,
     ExtractionError,
     Harvester,
     JsonHarvester,
+    MultiColumnCsvHarvester,
+    PatternCsvHarvester,
     RegexHarvester,
     extract_csv,
     extract_excel,
@@ -111,12 +115,12 @@ __version__ = "2.1.0"
 __author__ = "Mohammed Omari"
 
 __all__ = [
-    "AdaptiveSensitivityAnalysis", "AnalysisBundle", "AnalysisError", "Attribute", "BackupError", "BackupManifest", "BoTorchGPSurrogate", "BundleError", "CallableHarvester", "Campaign", "CampaignError", "CampaignManifest", "SensitivityAnalysisLoop",
+    "AdaptiveSensitivityAnalysis", "AnalysisBundle", "AnalysisError", "Attribute", "BackupError", "BackupManifest", "BoTorchGPSurrogate", "BundleError", "BulkCsvHarvester", "CallableHarvester", "Campaign", "CampaignError", "CampaignManifest", "SensitivityAnalysisLoop",
     "CampaignMemory", "CampaignStateStore", "Case", "CaseExecutionError", "CaseResult", "CompositeEventPublisher", "Constraint", "Coupler",
-    "CsvHarvester", "StatusRegistry", "ExecutionStatusRegistry", "EventPublisher", "EvaluationRecord", "ExcelHarvester", "OptimizeResult", "Optimizer", "OptimizationError", "NeuralMLPSurrogate",
+    "CsvHarvester", "DataFrameHarvester", "StatusRegistry", "ExecutionStatusRegistry", "EventPublisher", "EvaluationRecord", "ExcelHarvester", "OptimizeResult", "Optimizer", "OptimizationError", "NeuralMLPSurrogate",
     "CouplingError", "Database", "DatabaseError", "DesignPoint", "DiscreteSampling", "ExecutionBackend",
     "ExecutionEvent", "ExecutionResult", "ExtractionError", "FOATConstructor", "OATConstructor", "SimplexDOE", "File", "Flag", "FlagsMap",
-    "Harvester", "InMemorySharedBackend", "JsonHarvester", "JsonlEventPublisher", "LabeebError", "LiveObserver", "LivePlot", "LocalExecutionBackend", "NullEventPublisher", "OutputCatalog", "OutputRecord", "Phase", "PlotObserver", "PublisherError", "RedisStreamEventPublisher", "RegexHarvester", "ResultsPool", "SamplingError", "SharedMemoryBackend", "SharedMemoryError", "TemplateError", "WebSocketEventPublisher", "correlation_analysis",
+    "Harvester", "InMemorySharedBackend", "JsonHarvester", "JsonlEventPublisher", "LabeebError", "LiveObserver", "LivePlot", "LocalExecutionBackend", "MultiColumnCsvHarvester", "NullEventPublisher", "OutputCatalog", "OutputRecord", "Phase", "PatternCsvHarvester", "PlotObserver", "PublisherError", "RedisStreamEventPublisher", "RegexHarvester", "ResultsPool", "SamplingError", "SharedMemoryBackend", "SharedMemoryError", "TemplateError", "WebSocketEventPublisher", "correlation_analysis",
     "append_execution_event", "create_backup", "evaluate_expression", "export_analysis_bundle", "export_case_results", "export_execution_events", "export_optimization_history", "extract_csv", "extract_excel", "extract_json", "extract_regex", "format_value", "halton_sample", "simple_sensitivity_with_feedback",
     "latin_hypercube_sample", "load_analysis_bundle", "load_manifest", "morris_screening", "normal_sample", "product",
     "restore_backup", "run_extractor", "sample", "sobol_indices", "uniform_sample", "wilks_sample_size", "SurrogateModel", "optimize_scipy", "optimize_optuna", "rank_candidates",
