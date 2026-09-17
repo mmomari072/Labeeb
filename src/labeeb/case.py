@@ -708,9 +708,13 @@ class Case(CoupledUnit):
                         exc = CaseExecutionError(self.failure or "Case failed (continue policy)")
                         self._record_failed_case(exc)
                         failures.append(exc)
+                        prog_bar.report_case_status("error", str(exc))
+                    else:
+                        prog_bar.report_case_status("success")
                 except CaseExecutionError as exc:
                     self._record_failed_case(exc)
                     failures.append(exc)
+                    prog_bar.report_case_status("error", str(exc))
             if failures:
                 raise CaseExecutionError(
                     f"{len(failures)} of {num_rows} cases failed; see execution_history for details"
@@ -748,6 +752,7 @@ class Case(CoupledUnit):
                     try:
                         outputs, exec_hist, case_id = future.result()
                         temp_results[idx] = (outputs, exec_hist)
+                        prog_bar.report_case_status("success")
                     except Exception as e:
                         logger.error(f"Parallel case execution {idx} failed: {e}")
                         temp_results[idx] = (
@@ -761,6 +766,7 @@ class Case(CoupledUnit):
                             }],
                         )
                         failures.append(e)
+                        prog_bar.report_case_status("error", str(e))
 
                     prog_bar.update(prog_bar._index + 1)
 
