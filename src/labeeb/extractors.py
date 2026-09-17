@@ -580,6 +580,7 @@ class AutoHarvester(Harvester):
         pattern: Optional[str] = None,
         sheet: Union[str, int] = 0,
         file_type: Optional[str] = None,
+        filter: Optional[Callable[[Any], Any]] = None,
         transform: Optional[Callable[[Any], Any]] = None,
         optional: bool = False,
     ) -> None:
@@ -594,6 +595,7 @@ class AutoHarvester(Harvester):
             sheet: Sheet name or index (for Excel, default 0)
             file_type: Explicit file type ('csv', 'json', 'excel', 'text')
                        If None, auto-detected from extension
+            filter: Optional filtering function for data validation
             transform: Optional post-processing function
             optional: If True, missing files return None
         """
@@ -601,6 +603,7 @@ class AutoHarvester(Harvester):
             name=name,
             file_target=file_target,
             pattern=pattern or "",
+            filter=filter,
             transform=transform,
             optional=optional
         )
@@ -653,6 +656,8 @@ class AutoHarvester(Harvester):
         else:
             # All columns as DataFrame
             raw = pd.read_csv(target)
+        if self.filter is not None:
+            raw = self.filter(raw)
         return self.transform(raw) if self.transform is not None else raw
 
     def _harvest_json(self, target: Path) -> Any:
@@ -662,11 +667,15 @@ class AutoHarvester(Harvester):
                 f"JSON harvester requires 'key' parameter (e.g., 'results.temperature')"
             )
         raw = extract_json(target, self.key)
+        if self.filter is not None:
+            raw = self.filter(raw)
         return self.transform(raw) if self.transform is not None else raw
 
     def _harvest_excel(self, target: Path) -> Any:
         """Extract from Excel file."""
         raw = extract_excel(target, column=self.column, sheet=self.sheet)
+        if self.filter is not None:
+            raw = self.filter(raw)
         return self.transform(raw) if self.transform is not None else raw
 
     def _harvest_text(self, target: Path) -> Any:
@@ -676,4 +685,6 @@ class AutoHarvester(Harvester):
                 f"Text file harvester requires 'pattern' parameter (regex pattern)"
             )
         raw = extract_regex(target, self.pattern)
+        if self.filter is not None:
+            raw = self.filter(raw)
         return self.transform(raw) if self.transform is not None else raw

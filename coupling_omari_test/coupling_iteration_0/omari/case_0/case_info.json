@@ -1,7 +1,7 @@
 {
   "case_id": 0,
   "case_name": "relap",
-  "timestamp": "2026-09-17T19:46:14.171354",
+  "timestamp": "2026-09-17T19:50:31.875605",
   "database_attributes": {
     "POWER": 20.0,
     "FLOW": 1200.0
