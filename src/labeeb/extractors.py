@@ -2,17 +2,97 @@
 
 import json
 import re
+import statistics
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Optional, Union
+from typing import Any, Callable, List, Optional, Union
 
 import pandas as pd
+import numpy as np
 
 from .exceptions import LabeebError
 
 
 class ExtractionError(LabeebError):
     """Raised when a declared output metric cannot be extracted."""
+
+
+def apply_aggregation(data: Any, aggregation: str = "all") -> Any:
+    """Apply aggregation function to extracted data.
+
+    Args:
+        data: Extracted data (list, single value, or DataFrame)
+        aggregation: Aggregation method:
+            - "all" (default): Return all values as-is
+            - "first": First value
+            - "last": Last value
+            - "min": Minimum value
+            - "max": Maximum value
+            - "mean"/"avg": Average/mean
+            - "median": Median value
+            - "std": Standard deviation
+            - "sum": Sum of all values
+            - "count": Number of values
+            - "integration"/"integral": Sum (numerical integration)
+
+    Returns:
+        Aggregated result (single value or original data)
+
+    Raises:
+        ExtractionError: If aggregation fails
+    """
+    if aggregation == "all" or aggregation is None:
+        return data
+
+    # Convert to list if needed
+    if isinstance(data, (int, float)):
+        values = [data]
+    elif isinstance(data, str):
+        try:
+            values = [float(data)]
+        except ValueError:
+            raise ExtractionError(f"Cannot aggregate non-numeric data: {data}")
+    elif isinstance(data, (list, tuple)):
+        # Try to convert to numeric if needed
+        try:
+            values = [float(v) if not isinstance(v, (int, float)) else v for v in data]
+        except (ValueError, TypeError):
+            # If not numeric, return as-is for some operations
+            values = list(data)
+    elif isinstance(data, pd.Series):
+        values = data.tolist()
+    elif isinstance(data, pd.DataFrame):
+        # For DataFrame, return as-is (can't aggregate entire dataframe)
+        return data
+    else:
+        return data
+
+    if not values:
+        raise ExtractionError("Cannot aggregate empty data")
+
+    try:
+        if aggregation == "first":
+            return values[0]
+        elif aggregation == "last":
+            return values[-1]
+        elif aggregation in ("min", "minimum"):
+            return min(values)
+        elif aggregation in ("max", "maximum"):
+            return max(values)
+        elif aggregation in ("mean", "avg", "average"):
+            return statistics.mean(values) if len(values) > 0 else None
+        elif aggregation == "median":
+            return statistics.median(values)
+        elif aggregation == "std":
+            return statistics.stdev(values) if len(values) > 1 else 0
+        elif aggregation in ("sum", "integration", "integral"):
+            return sum(values)
+        elif aggregation == "count":
+            return len(values)
+        else:
+            raise ExtractionError(f"Unknown aggregation method: {aggregation}")
+    except (TypeError, ValueError) as exc:
+        raise ExtractionError(f"Aggregation '{aggregation}' failed: {exc}") from exc
 
 
 def extract_csv(path: Union[str, Path], column: str) -> list:
@@ -120,12 +200,22 @@ class Harvester:
     run directory at harvest time. By default a missing target file is an error
     (required output); set ``optional=True`` to declare an optional output that
     yields ``None`` when the file was not produced.
+
+    Aggregation options enable extracting summaries instead of all values:
+    - "all" (default): Return all extracted values
+    - "first", "last": First or last value
+    - "min", "max": Minimum or maximum
+    - "mean", "median": Average or median value
+    - "sum", "integration": Sum of all values
+    - "std": Standard deviation
+    - "count": Number of values
     """
 
     name: str
     file_target: Union[str, Path]
     pattern: Union[str, Callable[[Path], Any]]
     transform: Optional[Callable[[Any], Any]] = None
+    aggregation: str = "all"
     optional: bool = False
 
     def _resolve_target(self, base_dir: Union[str, Path] = "") -> Path:
@@ -146,7 +236,12 @@ class Harvester:
                 return None
             raise ExtractionError(f"Target output file '{target}' does not exist for harvester '{self.name}'")
         raw = run_extractor(target, self.pattern)
-        return self.transform(raw) if self.transform is not None else raw
+        # Apply transform first, then aggregation
+        if self.transform is not None:
+            raw = self.transform(raw)
+        # Apply aggregation
+        raw = apply_aggregation(raw, self.aggregation)
+        return raw
 
 
 class CsvHarvester(Harvester):
@@ -158,10 +253,12 @@ class CsvHarvester(Harvester):
         file_target: Union[str, Path],
         column: str,
         transform: Optional[Callable[[Any], Any]] = None,
+        aggregation: str = "all",
         optional: bool = False,
     ) -> None:
         super().__init__(name=name, file_target=file_target, pattern=column, transform=transform, optional=optional)
         self.column = column
+        self.aggregation = aggregation
 
     def harvest(self, base_dir: Union[str, Path] = "") -> Any:
         target = self._resolve_target(base_dir)
@@ -170,7 +267,9 @@ class CsvHarvester(Harvester):
                 return None
             raise ExtractionError(f"CSV file '{target}' does not exist for harvester '{self.name}'")
         raw = extract_csv(target, self.column)
-        return self.transform(raw) if self.transform is not None else raw
+        if self.transform is not None:
+            raw = self.transform(raw)
+        return apply_aggregation(raw, self.aggregation)
 
 
 class JsonHarvester(Harvester):
@@ -182,10 +281,12 @@ class JsonHarvester(Harvester):
         file_target: Union[str, Path],
         key: str,
         transform: Optional[Callable[[Any], Any]] = None,
+        aggregation: str = "all",
         optional: bool = False,
     ) -> None:
         super().__init__(name=name, file_target=file_target, pattern=key, transform=transform, optional=optional)
         self.key = key
+        self.aggregation = aggregation
 
     def harvest(self, base_dir: Union[str, Path] = "") -> Any:
         target = self._resolve_target(base_dir)
@@ -194,7 +295,9 @@ class JsonHarvester(Harvester):
                 return None
             raise ExtractionError(f"JSON file '{target}' does not exist for harvester '{self.name}'")
         raw = extract_json(target, self.key)
-        return self.transform(raw) if self.transform is not None else raw
+        if self.transform is not None:
+            raw = self.transform(raw)
+        return apply_aggregation(raw, self.aggregation)
 
 
 class RegexHarvester(Harvester):
@@ -206,9 +309,11 @@ class RegexHarvester(Harvester):
         file_target: Union[str, Path],
         pattern: str,
         transform: Optional[Callable[[Any], Any]] = None,
+        aggregation: str = "all",
         optional: bool = False,
     ) -> None:
         super().__init__(name=name, file_target=file_target, pattern=pattern, transform=transform, optional=optional)
+        self.aggregation = aggregation
 
     def harvest(self, base_dir: Union[str, Path] = "") -> Any:
         target = self._resolve_target(base_dir)
@@ -217,7 +322,9 @@ class RegexHarvester(Harvester):
                 return None
             raise ExtractionError(f"Text file '{target}' does not exist for harvester '{self.name}'")
         raw = extract_regex(target, self.pattern)
-        return self.transform(raw) if self.transform is not None else raw
+        if self.transform is not None:
+            raw = self.transform(raw)
+        return apply_aggregation(raw, self.aggregation)
 
 
 class ExcelHarvester(Harvester):
@@ -230,11 +337,13 @@ class ExcelHarvester(Harvester):
         column: str,
         sheet: Union[str, int] = 0,
         transform: Optional[Callable[[Any], Any]] = None,
+        aggregation: str = "all",
         optional: bool = False,
     ) -> None:
         super().__init__(name=name, file_target=file_target, pattern=column, transform=transform, optional=optional)
         self.column = column
         self.sheet = sheet
+        self.aggregation = aggregation
 
     def harvest(self, base_dir: Union[str, Path] = "") -> Any:
         target = self._resolve_target(base_dir)
@@ -243,7 +352,9 @@ class ExcelHarvester(Harvester):
                 return None
             raise ExtractionError(f"Excel file '{target}' does not exist for harvester '{self.name}'")
         raw = extract_excel(target, self.column, sheet=self.sheet)
-        return self.transform(raw) if self.transform is not None else raw
+        if self.transform is not None:
+            raw = self.transform(raw)
+        return apply_aggregation(raw, self.aggregation)
 
 
 class CallableHarvester(Harvester):
@@ -255,9 +366,11 @@ class CallableHarvester(Harvester):
         file_target: Union[str, Path],
         extractor: Callable[[Path], Any],
         transform: Optional[Callable[[Any], Any]] = None,
+        aggregation: str = "all",
         optional: bool = False,
     ) -> None:
         super().__init__(name=name, file_target=file_target, pattern=extractor, transform=transform, optional=optional)
+        self.aggregation = aggregation
 
     def harvest(self, base_dir: Union[str, Path] = "") -> Any:
         target = self._resolve_target(base_dir)
@@ -266,7 +379,9 @@ class CallableHarvester(Harvester):
                 return None
             raise ExtractionError(f"Target file '{target}' does not exist for harvester '{self.name}'")
         raw = self.pattern(target) if callable(self.pattern) else run_extractor(target, self.pattern)
-        return self.transform(raw) if self.transform is not None else raw
+        if self.transform is not None:
+            raw = self.transform(raw)
+        return apply_aggregation(raw, self.aggregation)
 
 
 class BulkCsvHarvester(Harvester):
