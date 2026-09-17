@@ -818,6 +818,13 @@ class Case(CoupledUnit):
                     f"{len(failures)} of {num_rows} cases failed; see execution_history for details"
                 ) from failures[0]
 
+        input_frame = self.database.to_dataframe()
+        output_frame = pd.DataFrame(self.outputs)
+        self.outputs_db = pd.concat(
+            [input_frame.reset_index(drop=True), output_frame.reset_index(drop=True)],
+            axis=1,
+        )
+
         return self
 
     def _shall_stop(self) -> bool:

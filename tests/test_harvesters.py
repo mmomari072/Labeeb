@@ -133,6 +133,8 @@ def test_case_integration_with_typed_harvesters(tmp_path: Path):
 
     assert case.outputs["residual"] == [5.0e-4, 5.0e-4]
     assert case.outputs["keff"] == [1.005, 1.005]
+    assert list(case.outputs_db.columns) == ["RHO", "residual", "keff"]
+    assert case.outputs_db["RHO"].tolist() == [19.0, 19.5]
 
 
 def test_case_harvester_missing_field_fails_case_execution(tmp_path: Path):

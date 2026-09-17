@@ -885,3 +885,8 @@ Run the unit test suite to verify code compliance and safety:
 ```bash
 pytest tests/
 ```
+
+
+### Case output table
+
+After `case.launch()`, `case.outputs_db` is a pandas DataFrame joining input database columns with harvested outputs in case order.

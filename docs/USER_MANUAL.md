@@ -2197,3 +2197,8 @@ All domain exceptions inherit from `LabeebError`:
 | **`SharedMemoryError`**| `labeeb.shared_memory`| Invalid case ID or uncopyable shared state |
 | **`PublisherError`** | `labeeb.publisher` | Unrecoverable event publisher failure |
 | **`BundleError`** | `labeeb.bundle` | Corrupt analysis bundle archive or missing bundle schema |
+
+
+### Case output table
+
+After `case.launch()`, `case.outputs_db` is a pandas DataFrame joining input database columns with harvested outputs in case order.
