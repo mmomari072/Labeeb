@@ -800,7 +800,7 @@ class Database(dict):
                 continue
             if isinstance(col_attr, Attribute):
                 filtered_data = [col_attr[idx] for idx in valid_indices]
-                col_attr._data = filtered_data
+                col_attr[:] = filtered_data
 
         # Recalculate derived attributes on filtered data
         self.refresh_index()
