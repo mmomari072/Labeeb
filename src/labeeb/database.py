@@ -1575,17 +1575,20 @@ class Database(dict):
     def __setstate__(self, state: Dict[str, Any]) -> None:
         self.__dict__.update(state)
 
-    def filter(self, save: Optional[str] = None, **conditions: Any) -> "Database":
+    def filter(self, save: Optional[str] = None, return_data: bool = False, **conditions: Any) -> Union["Database", Dict[str, List[Any]]]:
         """Filter database rows by column conditions.
 
         Args:
             save: Optional file path to save filtered data (csv, json, parquet)
                  Format auto-detected from extension
+            return_data: If True, return filtered data as dict instead of Database object.
+                        Useful for RAM-based execution without creating new Database.
             **conditions: Column name = value or callable for filtering
                          E.g., filter(temp=300, pressure__gt=100)
 
         Returns:
-            New Database with filtered rows (optionally saved to file)
+            If return_data=False: New Database with filtered rows (optionally saved to file)
+            If return_data=True: Dictionary {column_name: [values]} ready for execution
 
         Examples:
             >>> # Filter and return new database
@@ -1593,6 +1596,10 @@ class Database(dict):
             >>>
             >>> # Filter and save to file
             >>> filtered = db.filter(save="filtered_cases.csv", temperature__gt=350)
+            >>>
+            >>> # Filter and return data dict for execution
+            >>> filtered_data = db.filter(return_data=True, temperature__gt=350)
+            >>> case.database = Database(data=filtered_data)
             >>>
             >>> # Filter with callable and save
             >>> filtered = db.filter(
@@ -1603,6 +1610,8 @@ class Database(dict):
         if not conditions:
             if save:
                 self.save(save)
+            if return_data:
+                return {col: self[col] for col in self.keys() if col != '__db_index__'}
             return self
 
         df = self.to_dataframe()
@@ -1646,6 +1655,10 @@ class Database(dict):
         # Save if requested
         if save:
             filtered_db.save(save)
+
+        # Return data dict if requested (for RAM-based execution)
+        if return_data:
+            return filtered_data
 
         return filtered_db
 
