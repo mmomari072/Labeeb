@@ -36,6 +36,37 @@
 - Documented all display methods: `to_dataframe()`, `rows`, `get_row()`, `plot()`, export
 - Users can now easily view database data in tabular format
 
+### ✅ Harvester Filter Function - Custom Data Processing and Validation
+**Commit:** `00bd980`  
+**Date:** 2026-09-17
+
+- Add `filter` parameter to all harvester classes for custom data processing
+- Supports all harvester types:
+  - Single-column: CsvHarvester, JsonHarvester, RegexHarvester, ExcelHarvester, CallableHarvester
+  - Multi-column: BulkCsvHarvester, MultiColumnCsvHarvester, PatternCsvHarvester, DataFrameHarvester
+- Execution pipeline: Extract → **Filter** → Transform → Aggregation
+- Filter function receives extracted data and returns filtered data
+- Enable use cases:
+  - Data validation: skip invalid/negative/outlier values
+  - Selective harvesting: only keep values meeting criteria
+  - Quality control: filter by ranges, patterns, or custom logic
+  - Outlier removal: statistical filtering
+- Works seamlessly with transform and aggregation parameters
+- Examples:
+  ```python
+  # Filter outliers
+  CsvHarvester("temps", "file.csv", "temp", 
+               filter=lambda v: [x for x in v if abs(x-mean) <= 2*std])
+  
+  # Selective harvesting
+  CsvHarvester("valid", "file.csv", "val",
+               filter=lambda v: [x for x in v if x > 0])
+  
+  # Multi-column dict filtering
+  MultiColumnCsvHarvester("data", "file.csv", cols,
+                          filter=lambda d: {k: [x for x in v if x > 0] for k,v in d.items()})
+  ```
+
 ### ✅ Database Filter with Save Option for Execution Dataset Preparation
 **Commits:** `1c8d63d`, `c45c3e5`, `8377019`, `8620f03`  
 **Date:** 2026-09-17
