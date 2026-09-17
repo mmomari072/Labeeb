@@ -142,7 +142,7 @@ def extract_regex(path: Union[str, Path], pattern: str) -> str:
 def extract_excel(
     path: Union[str, Path],
     column: Optional[str] = None,
-    sheet: Union[str, int] = 0,
+    sheet: Optional[Union[str, int]] = 0,
 ) -> Union[list, "pd.DataFrame"]:
     """Read a column (or the full sheet) from an Excel (.xlsx/.xls) output file.
 
@@ -150,7 +150,9 @@ def extract_excel(
         path: Path to the Excel output workbook.
         column: Optional column name to return as a typed list. When omitted,
             the whole sheet is returned as a pandas DataFrame.
-        sheet: Sheet name or zero-based index (default first sheet).
+        sheet: Sheet name or zero-based index (default first sheet). When
+            ``None`` and ``column`` is provided, search all sheets for that
+            column; exactly one match is required.
 
     Returns:
         Column values as a list, or the full sheet as a DataFrame.
@@ -164,7 +166,21 @@ def extract_excel(
     if not p.exists():
         raise ExtractionError(f"Excel file '{path}' does not exist")
     try:
-        dataframe = pd.read_excel(p, sheet_name=sheet)
+        if sheet is None and column is not None:
+            workbook = pd.ExcelFile(p)
+            matches = []
+            for sheet_name in workbook.sheet_names:
+                frame = pd.read_excel(workbook, sheet_name=sheet_name)
+                if column in frame.columns:
+                    matches.append((sheet_name, frame))
+            if len(matches) == 0:
+                raise ExtractionError(f"Column '{column}' missing in all Excel sheets of '{path}'")
+            if len(matches) > 1:
+                names = ", ".join(name for name, _ in matches)
+                raise ExtractionError(f"Column '{column}' found in multiple sheets ({names}) of '{path}'")
+            dataframe = matches[0][1]
+        else:
+            dataframe = pd.read_excel(p, sheet_name=sheet)
     except ImportError as exc:
         raise ExtractionError(
             f"Reading Excel output '{path}' requires an Excel engine "
@@ -347,7 +363,7 @@ class ExcelHarvester(Harvester):
         name: str,
         file_target: Union[str, Path],
         column: str,
-        sheet: Union[str, int] = 0,
+        sheet: Optional[Union[str, int]] = 0,
         filter: Optional[Callable[[Any], Any]] = None,
         transform: Optional[Callable[[Any], Any]] = None,
         aggregation: str = "all",
@@ -673,7 +689,7 @@ class AutoHarvester(Harvester):
 
     def _harvest_excel(self, target: Path) -> Any:
         """Extract from Excel file."""
-        raw = extract_excel(target, column=self.column, sheet=self.sheet)
+        raw = extract_excel(target, column=self.column or self.name, sheet=self.sheet)
         if self.filter is not None:
             raw = self.filter(raw)
         return self.transform(raw) if self.transform is not None else raw

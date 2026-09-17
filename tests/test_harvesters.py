@@ -6,13 +6,36 @@ from labeeb.case import Case
 from labeeb.database import Database
 from labeeb.exceptions import CaseExecutionError
 from labeeb.extractors import (
+    AutoHarvester,
     CallableHarvester,
     CsvHarvester,
+    ExcelHarvester,
     ExtractionError,
     Harvester,
     JsonHarvester,
     RegexHarvester,
 )
+
+
+def test_excel_harvester_finds_column_across_sheets_when_sheet_omitted(tmp_path: Path):
+    workbook = tmp_path / "results.xlsx"
+    with pd.ExcelWriter(workbook) as writer:
+        pd.DataFrame({"other": [1]}).to_excel(writer, sheet_name="metadata", index=False)
+        pd.DataFrame({"peak_temp": [10.0, 12.5]}).to_excel(writer, sheet_name="results", index=False)
+
+    harvester = ExcelHarvester("peak_temp", workbook, "peak_temp", sheet=None)
+    assert harvester.harvest() == [10.0, 12.5]
+
+
+def test_auto_harvester_finds_excel_column_and_rejects_ambiguous_matches(tmp_path: Path):
+    workbook = tmp_path / "results.xlsx"
+    with pd.ExcelWriter(workbook) as writer:
+        pd.DataFrame({"keff": [1.0]}).to_excel(writer, sheet_name="a", index=False)
+        pd.DataFrame({"keff": [1.1]}).to_excel(writer, sheet_name="b", index=False)
+
+    harvester = AutoHarvester("keff", workbook, file_type="excel", sheet=None)
+    with pytest.raises(ExtractionError, match="multiple sheets"):
+        harvester.harvest()
 
 
 def test_csv_harvester_extracts_column_and_transforms(tmp_path: Path):

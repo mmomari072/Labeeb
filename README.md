@@ -498,7 +498,9 @@ peak = CsvHarvester(
 `AutoHarvester` selects the extractor from the file extension (`.csv`, `.json`,
 `.xlsx`/`.xls`, and text files). Supply `column` for CSV/Excel, `key` for a
 dotted JSON path, or `pattern` for a regular expression. Use `file_type` when
-the extension is missing or misleading:
+the extension is missing or misleading. For Excel, `sheet=None` searches all
+worksheets for the requested column and requires exactly one match. If
+`column` is omitted, `AutoHarvester` uses its `name` as the column name:
 
 ```python
 from labeeb.extractors import AutoHarvester

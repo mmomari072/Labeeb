@@ -1320,7 +1320,9 @@ case.add_harvester(temperature)
 `AutoHarvester` chooses CSV, JSON, Excel, or text extraction from the target
 file extension. Set `column`, `key`, or `pattern` for the selected format. Set
 `file_type` explicitly when needed; `optional=True` returns `None` when the
-file is absent.
+file is absent. For Excel, pass `sheet=None` to search every worksheet for the
+requested column; exactly one matching sheet is required. When `column` is not
+provided, the harvester name is used as the Excel column name.
 
 ```python
 from labeeb.extractors import AutoHarvester
