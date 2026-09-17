@@ -569,6 +569,8 @@ class Database(dict):
         seed: Optional[int] = None,
         method: str = "monte_carlo",
         random_reuse: str = "independent",
+        row_filter: Optional[callable] = None,
+        max_rejections: Optional[int] = None,
         **kwargs: Any,
     ):
         """
@@ -584,6 +586,9 @@ class Database(dict):
             seed: Seed for built-in distributions and custom draw(size, rng) samplers.
             method: "monte_carlo" (default) or "lhs"; LHS stratifies each OAT group.
             random_reuse: "independent" (default) or "shared" across OAT rows.
+            row_filter: Optional callable(row: Dict) -> bool for row-by-row validation.
+                       Returns True to keep row, False to reject and resample.
+            max_rejections: Maximum consecutive rejections before error (default n*100).
         """
         super().__init__()
         self.name: Optional[str] = name
@@ -615,6 +620,11 @@ class Database(dict):
         )
         self._creation_date = datetime.datetime.now()
 
+        # Store sampling metadata
+        self.row_filter = row_filter
+        self.max_rejections = max_rejections
+        self.sampling_stats: Dict[str, Any] = {}
+
         # Parse configurations
         for key, val in kwargs.items():
             if key in self.__dict__:
@@ -630,13 +640,180 @@ class Database(dict):
             include_indices = kwargs.pop('include_indices', True)
             self._construct_from_attributes(
                 attributes, n=n, seed=seed, method=method, random_reuse=random_reuse,
-                id_start=id_start, index_placement=index_placement, include_indices=include_indices
+                id_start=id_start, index_placement=index_placement, include_indices=include_indices,
+                row_filter=row_filter, max_rejections=max_rejections
             )
+
+    def _apply_row_filter(
+        self, generated: Dict[str, List[Any]], attrs: List[Attribute], deferred: List[Attribute],
+        dependencies: Dict[str, List[str]], rng: Any, method: str, random_reuse: str,
+        row_count: int, repeats: int, design: Dict[str, List[Any]], oat_attrs: List[Attribute],
+        row_filter: callable, max_rejections: Optional[int]
+    ) -> tuple:
+        """Apply row-by-row validation filtering with rejection sampling.
+
+        Returns:
+            Tuple of (filtered_generated, stats_dict)
+        """
+        if max_rejections is None:
+            max_rejections = row_count * 100
+
+        stats = {
+            "total_attempts": 0,
+            "total_accepted": 0,
+            "total_rejected": 0,
+            "acceptance_rate": 0.0,
+            "rejection_reasons": {}
+        }
+
+        filtered_generated: Dict[str, List[Any]] = {k: [] for k in generated.keys()}
+        current_row_idx = 0
+        consecutive_rejections = 0
+
+        while len(filtered_generated[list(filtered_generated.keys())[0]]) < row_count:
+            stats["total_attempts"] += 1
+
+            # Generate one row worth of data
+            row_data: Dict[str, Any] = {}
+
+            # Extract current row from generated data
+            for attr_name, values in generated.items():
+                if current_row_idx < len(values):
+                    row_data[attr_name] = values[current_row_idx]
+
+            # Evaluate Derived attributes for this row
+            try:
+                for attr in deferred:
+                    spec = attr.sampling
+                    deps = dependencies[attr.name]
+
+                    if isinstance(spec.function, str):
+                        # Evaluate expression
+                        result = eval(spec.function, {"__builtins__": {}}, row_data)
+                    elif callable(spec.function):
+                        # Call function with row dict
+                        result = spec.function(row_data)
+                    else:
+                        result = spec.function
+
+                    row_data[attr.name] = result
+            except Exception as exc:
+                logger.debug(f"Derived attribute evaluation failed for row: {exc}")
+                consecutive_rejections += 1
+                if consecutive_rejections > max_rejections:
+                    raise DatabaseError(
+                        f"Row filter: {consecutive_rejections} consecutive rejections; "
+                        f"check filter constraints or increase max_rejections"
+                    )
+                current_row_idx = (current_row_idx + 1) % row_count
+                continue
+
+            # Apply row filter
+            try:
+                is_valid = row_filter(row_data)
+            except Exception as exc:
+                logger.debug(f"Row filter evaluation failed: {exc}")
+                is_valid = False
+
+            if is_valid:
+                # Keep this row
+                for attr_name, value in row_data.items():
+                    if attr_name in filtered_generated:
+                        filtered_generated[attr_name].append(value)
+                consecutive_rejections = 0
+                stats["total_accepted"] += 1
+            else:
+                # Reject and try next row
+                stats["total_rejected"] += 1
+                consecutive_rejections += 1
+                if consecutive_rejections > max_rejections:
+                    raise DatabaseError(
+                        f"Row filter: {consecutive_rejections} consecutive rejections; "
+                        f"check filter constraints or increase max_rejections"
+                    )
+
+            current_row_idx = (current_row_idx + 1) % row_count
+
+        stats["acceptance_rate"] = (
+            stats["total_accepted"] / stats["total_attempts"]
+            if stats["total_attempts"] > 0 else 0.0
+        )
+
+        return filtered_generated, stats
+
+    def _apply_row_filter_to_database(self, row_filter: callable, target_row_count: int, max_rejections: Optional[int]) -> None:
+        """Apply row-by-row validation, keeping target_row_count valid rows.
+
+        This works by iterating through all rows in the current database and filtering
+        those that don't pass the filter. Tracks acceptance statistics.
+        """
+        if max_rejections is None:
+            max_rejections = target_row_count * 100
+
+        stats = {
+            "total_attempts": 0,
+            "total_accepted": 0,
+            "total_rejected": 0,
+            "acceptance_rate": 0.0,
+        }
+
+        # Collect rows that pass the filter
+        valid_indices = []
+        current_length = self._get_max_column_length()
+
+        for row_idx in range(current_length):
+            row = self.get_row(row_idx)
+            stats["total_attempts"] += 1
+
+            try:
+                is_valid = row_filter(row)
+            except Exception as exc:
+                logger.debug(f"Row filter evaluation failed for row {row_idx}: {exc}")
+                is_valid = False
+
+            if is_valid:
+                valid_indices.append(row_idx)
+                stats["total_accepted"] += 1
+            else:
+                stats["total_rejected"] += 1
+
+        # If we have exactly the right number or more, keep only target_row_count
+        if stats["total_accepted"] >= target_row_count:
+            valid_indices = valid_indices[:target_row_count]
+            stats["total_accepted"] = target_row_count
+        else:
+            # Not enough valid rows - warn but keep what we have
+            logger.warning(
+                f"Row filter: only {stats['total_accepted']}/{target_row_count} valid rows "
+                f"after filtering. Keeping all {stats['total_accepted']} valid rows. "
+                f"(Acceptance rate: {stats['total_accepted']/stats['total_attempts']:.1%})"
+            )
+
+        if stats["total_accepted"] == 0:
+            raise DatabaseError("Row filter rejected all rows; no valid samples generated")
+
+        # Filter all columns to keep only valid rows
+        for col_name, col_attr in list(self.items()):
+            if col_name == "__db_index__":
+                continue
+            if isinstance(col_attr, Attribute):
+                filtered_data = [col_attr[idx] for idx in valid_indices]
+                col_attr._data = filtered_data
+
+        # Recalculate derived attributes on filtered data
+        self.refresh_index()
+
+        stats["acceptance_rate"] = (
+            stats["total_accepted"] / stats["total_attempts"]
+            if stats["total_attempts"] > 0 else 0.0
+        )
+        self.sampling_stats = stats
 
     def _construct_from_attributes(
         self, attributes: Sequence[Attribute], *, n: Optional[int], seed: Optional[int],
         method: str, random_reuse: str, id_start: int = 1, index_placement: str = 'end',
-        include_indices: bool = True
+        include_indices: bool = True, row_filter: Optional[callable] = None,
+        max_rejections: Optional[int] = None
     ) -> None:
         """Materialize attribute data and sampling specifications as aligned rows.
 
@@ -644,6 +821,8 @@ class Database(dict):
             id_start: Starting value for row IDs (0 or 1, default 1)
             index_placement: Where to place OAT indices - 'end' (default) or 'interleaved'
             include_indices: Whether to include row ID and OAT indices (default True)
+            row_filter: Optional callable for row-by-row acceptance/rejection
+            max_rejections: Maximum consecutive rejections before error
         """
         if method not in ("monte_carlo", "lhs"):
             raise DatabaseError("Sampling method must be 'monte_carlo' or 'lhs'")
@@ -815,6 +994,10 @@ class Database(dict):
                                            dependencies=dependencies[attr.name],
                                            unit=attr.unit, description=attr.description, Type=attr.type)
                 pending = [item for item in pending if item is not attr]
+
+        # Apply row-by-row validation filter if provided
+        if row_filter is not None:
+            self._apply_row_filter_to_database(row_filter, row_count, max_rejections)
 
     def validate(self) -> None:
         """Validate all Attribute columns inside the database."""
