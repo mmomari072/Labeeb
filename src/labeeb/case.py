@@ -574,7 +574,12 @@ class Case(CoupledUnit):
         for f in self.pre_functions:
             f(self, **kwargs)
 
-        if self.new:
+        # In continue mode, execute missing cases (those without existing directories).
+        # In new mode, always execute. In other modes, skip execution.
+        case_dir_exists = os_ops.isdir(self.current_case_dir)
+        should_execute = self.new or (self.run_type == "continue" and not case_dir_exists)
+
+        if should_execute:
             os_ops.mkdir(self.current_case_dir)
 
             # Copy required files/directories
