@@ -38,6 +38,13 @@ def test_auto_harvester_finds_excel_column_and_rejects_ambiguous_matches(tmp_pat
         harvester.harvest()
 
 
+def test_auto_harvester_extracts_named_multiple_excel_columns(tmp_path: Path):
+    workbook = tmp_path / "results.xlsx"
+    pd.DataFrame({"T_peak": [10.0], "P_peak": [2.0]}).to_excel(workbook, sheet_name="Results", index=False)
+    harvester = AutoHarvester("thermal", workbook, file_type="excel", sheet="Results", columns=["T_peak", "P_peak"], names={"T_peak": "temperature", "P_peak": "pressure"})
+    assert harvester.harvest() == {"temperature": [10.0], "pressure": [2.0]}
+
+
 def test_csv_harvester_extracts_column_and_transforms(tmp_path: Path):
     csv_file = tmp_path / "metrics.csv"
     pd.DataFrame({"keff": [1.0025, 1.0030], "flux": [2.5e14, 2.6e14]}).to_csv(csv_file, index=False)

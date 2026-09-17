@@ -519,6 +519,17 @@ than one worksheet when searching, raises `ExtractionError`; this prevents an
 ambiguous result from being selected silently. `optional=True` still returns
 `None` when the output file itself is absent.
 
+Use `columns` to extract several columns as one grouped result. Optional
+`names` remaps column names in the returned dictionary:
+
+```python
+thermal = AutoHarvester(
+    name="thermal", file_target="results.xlsx", file_type="excel",
+    sheet="Results", columns=["T_peak", "P_peak"],
+    names={"T_peak": "temperature", "P_peak": "pressure"},
+)
+```
+
 `CampaignStateStore` persists attempts for resume/retry workflows and prevents
 cache reuse when the input hash changes.
 

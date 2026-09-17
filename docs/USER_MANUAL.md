@@ -1352,6 +1352,19 @@ missing column or duplicate matches produce `ExtractionError` with worksheet
 details. If the workbook is absent and `optional=True` is set, the metric is
 recorded as `None` instead.
 
+To extract several columns from one worksheet, pass `columns=[...]`. The
+harvester returns a dictionary under its group `name`; use `names={...}` to
+map source column names to application names. With `sheet=None`, all requested
+columns must occur together on exactly one worksheet.
+
+```python
+thermal = AutoHarvester(
+    name="thermal", file_target="results.xlsx", file_type="excel",
+    sheet="Results", columns=["T_peak", "P_peak"],
+    names={"T_peak": "temperature", "P_peak": "pressure"},
+)
+```
+
 ### Durable Output Catalog (`labeeb.outputs`)
 `OutputCatalog` persists an append-only SQLite ledger linking every (case, attempt)
 execution to its harvested metrics, artifacts, stdout/stderr files, and status —

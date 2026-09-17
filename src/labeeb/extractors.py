@@ -592,6 +592,8 @@ class AutoHarvester(Harvester):
         name: str,
         file_target: Union[str, Path],
         column: Optional[str] = None,
+        columns: Optional[List[str]] = None,
+        names: Optional[dict] = None,
         key: Optional[str] = None,
         pattern: Optional[str] = None,
         sheet: Union[str, int] = 0,
@@ -624,6 +626,10 @@ class AutoHarvester(Harvester):
             optional=optional
         )
         self.column = column
+        if column is not None and columns is not None:
+            raise ExtractionError("Specify either 'column' or 'columns', not both")
+        self.columns = list(columns) if columns is not None else None
+        self.names = dict(names or {})
         self.key = key
         self.sheet = sheet
         self.explicit_file_type = file_type
@@ -666,6 +672,13 @@ class AutoHarvester(Harvester):
 
     def _harvest_csv(self, target: Path) -> Any:
         """Extract from CSV file."""
+        if self.columns is not None:
+            frame = pd.read_csv(target)
+            missing = [col for col in self.columns if col not in frame.columns]
+            if missing:
+                raise ExtractionError(f"Columns {missing} missing in CSV output '{target}'")
+            raw = {self.names.get(col, col): frame[col].tolist() for col in self.columns}
+            return self.transform(raw) if self.transform is not None else raw
         if self.column:
             # Single column
             raw = extract_csv(target, self.column)
@@ -689,6 +702,24 @@ class AutoHarvester(Harvester):
 
     def _harvest_excel(self, target: Path) -> Any:
         """Extract from Excel file."""
+        if self.columns is not None:
+            if self.sheet is None:
+                workbook = pd.ExcelFile(target)
+                matches = []
+                for sheet_name in workbook.sheet_names:
+                    candidate = pd.read_excel(workbook, sheet_name=sheet_name)
+                    if all(col in candidate.columns for col in self.columns):
+                        matches.append(candidate)
+                if len(matches) != 1:
+                    raise ExtractionError(f"Requested columns must match exactly one Excel sheet in '{target}'")
+                frame = matches[0]
+            else:
+                frame = extract_excel(target, column=None, sheet=self.sheet)
+            missing = [col for col in self.columns if col not in frame.columns]
+            if missing:
+                raise ExtractionError(f"Columns {missing} missing in Excel output '{target}'")
+            raw = {self.names.get(col, col): frame[col].tolist() for col in self.columns}
+            return self.transform(raw) if self.transform is not None else raw
         raw = extract_excel(target, column=self.column or self.name, sheet=self.sheet)
         if self.filter is not None:
             raw = self.filter(raw)
