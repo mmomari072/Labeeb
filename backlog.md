@@ -85,6 +85,41 @@ Lambda functions and other unpicklable objects are no longer a blocker for savin
 
 ## Pending Tasks
 
+### 📋 High Priority (Next Release v2.2.0)
+
+#### ExecutionSettings Pattern (Architectural)
+**Priority:** HIGH  
+**Complexity:** MEDIUM  
+**Scope:** Case, Coupler, Campaign  
+
+**Motivation:**
+- Separate execution configuration from case study data
+- Reduce attribute clutter on Case/Coupler objects
+- Enable settings reusability and serialization
+- Improve discoverability (IDE autocomplete)
+- Consistent defaults and validation
+
+**Design:**
+- Create `ExecutionSettings` class with grouped parameters
+- Current scattered attributes: timeout, run_case_main_dir, capture_output, command_failure_policy, harvest_failure_policy, max_attempts, parallel, n_workers, execution_backend, verbose, log_file, event_capture
+- Move to: `case.settings.timeout`, `case.settings.run_dir`, etc.
+- Implement backward-compatible properties for v2.2-2.3 transition
+- Deprecate old direct attributes in v2.3, remove in v3.0
+
+**Tasks:**
+- [ ] Design ExecutionSettings class with validation
+- [ ] Implement for Case class (with backward compatibility)
+- [ ] Implement for Coupler class
+- [ ] Implement for Campaign class
+- [ ] Add settings.copy(), settings.to_dict(), settings.load() methods
+- [ ] Update documentation with settings examples
+- [ ] Add tests for validation and inheritance
+- [ ] Migration guide for users (v2.1 → v2.2)
+
+---
+
+### 📋 Lower Priority (Future Releases)
+
 - [ ] Add performance benchmarks for large databases (>100k rows)
 - [ ] Support correlated sampling across OAT attributes (future enhancement)
 - [ ] Add database versioning/schema tracking
