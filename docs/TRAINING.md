@@ -368,6 +368,28 @@ print(f"Iterations: {result.metrics['CONVERGENCE_ITER']}")
 print(f"Power density: {result.metrics['POWER_DENSITY']} MW/L")
 ```
 
+#### AutoHarvester with Excel output
+
+`AutoHarvester` detects Excel files from `.xlsx`/`.xls`. Set `sheet` to a
+worksheet name or index, or use `sheet=None` to search all worksheets. When
+`column` is omitted, the harvester `name` is used as the column name.
+
+```python
+from labeeb.extractors import AutoHarvester
+
+case.add_harvester(AutoHarvester(
+    name="PEAK_TEMP",
+    file_target="results.xlsx",
+    file_type="excel",
+    sheet=None,
+    transform=float,
+))
+```
+
+Searching requires exactly one worksheet containing the column; missing or
+duplicate matches raise `ExtractionError` instead of selecting a sheet
+silently.
+
 **Reference**: [USER_MANUAL § 5: Case Execution](./USER_MANUAL.md#5-case-execution--declarative-output-harvesting)
 
 ---

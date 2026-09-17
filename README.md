@@ -513,6 +513,12 @@ metric = AutoHarvester(
 case.add_harvester(metric)
 ```
 
+For an Excel workbook, `sheet` may be a worksheet name, a zero-based index, or
+`None` to search every worksheet. A missing column, or a column found on more
+than one worksheet when searching, raises `ExtractionError`; this prevents an
+ambiguous result from being selected silently. `optional=True` still returns
+`None` when the output file itself is absent.
+
 `CampaignStateStore` persists attempts for resume/retry workflows and prevents
 cache reuse when the input hash changes.
 

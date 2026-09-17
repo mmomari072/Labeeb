@@ -1334,6 +1334,24 @@ keff = AutoHarvester(
 case.add_harvester(keff)
 ```
 
+For Excel outputs, `sheet` accepts a worksheet name or zero-based index. Use
+`sheet=None` when the solver may write the metric to different worksheets:
+
+```python
+peak = AutoHarvester(
+    name="peak_temperature", file_target="results.xlsx",
+    file_type="excel", sheet=None,   # search all worksheets
+    # column="peak_temperature" is optional; name is used by default
+    transform=float,
+)
+case.add_harvester(peak)
+```
+
+The search succeeds only when one worksheet contains the requested column. A
+missing column or duplicate matches produce `ExtractionError` with worksheet
+details. If the workbook is absent and `optional=True` is set, the metric is
+recorded as `None` instead.
+
 ### Durable Output Catalog (`labeeb.outputs`)
 `OutputCatalog` persists an append-only SQLite ledger linking every (case, attempt)
 execution to its harvested metrics, artifacts, stdout/stderr files, and status —
