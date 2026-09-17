@@ -49,6 +49,10 @@ class Flag:
             attribute_name: Mapped Database attribute column name.
             fmt: Optional format string (e.g. '%5.2f').
         """
+        if not isinstance(name, str) or not name:
+            raise CaseExecutionError("Flag name must be a non-empty string")
+        if not isinstance(attribute_name, str) or not attribute_name:
+            raise CaseExecutionError("Flag attribute_name must be a non-empty string")
         self.name: str = name
         self.attribute: str = attribute_name
         self.format: Optional[str] = fmt
@@ -100,6 +104,8 @@ class FlagsMap:
             if not isinstance(f, Flag):
                 logger.error("Only Flag instances can be added to FlagsMap")
                 continue
+            if f.name in self._flags:
+                raise CaseExecutionError(f"Duplicate flag name '{f.name}'")
             self._flags[f.name] = f
         return self
 
