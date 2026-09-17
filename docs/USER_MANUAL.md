@@ -2202,3 +2202,6 @@ All domain exceptions inherit from `LabeebError`:
 ### Case output table
 
 After `case.launch()`, `case.outputs_db` is a pandas DataFrame joining input database columns with harvested outputs in case order.
+
+
+Dynamic attributes accept `target="inputs"` (default), `"outputs"`, or `"both"`. Output-target attributes are evaluated after harvesting and added to `case.outputs_db`.

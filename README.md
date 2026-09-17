@@ -890,3 +890,6 @@ pytest tests/
 ### Case output table
 
 After `case.launch()`, `case.outputs_db` is a pandas DataFrame joining input database columns with harvested outputs in case order.
+
+
+Dynamic attributes support `target="inputs"` (default), `"outputs"`, or `"both"`; output-target attributes are evaluated after harvesting and added to `case.outputs_db`.
