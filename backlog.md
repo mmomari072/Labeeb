@@ -87,6 +87,64 @@ Lambda functions and other unpicklable objects are no longer a blocker for savin
 
 ### 📋 High Priority (Next Release v2.2.0)
 
+#### ProgressBar Health Metrics Enhancement
+**Priority:** HIGH  
+**Complexity:** MEDIUM  
+**Scope:** ProgressBar, Case, Campaign  
+
+**Motivation:**
+- Real-time visibility into execution health
+- Detect failures/warnings early during long runs
+- Monitor success rate as cases execute
+- Support all display styles with graceful fallback
+
+**Features:**
+- Track: error count, warning count, success count
+- Display: count/percentage for each status
+- Three display options with automatic fallback:
+  1. **Inline Stats (Compact)** - Single line, space-efficient
+  2. **Separate Line (Detailed)** - Clean two-line format
+  3. **Color-coded (Rich)** - Terminal color support when available
+- Fallback priority: Rich → Detailed → Compact → Headless
+- Works with all styles: default, apt, powershell
+- Integration with Case and Campaign execution
+
+**Implementation:**
+- [ ] Extend ProgressBar with health tracking attributes
+- [ ] Add report_case_status(status, error_msg) method
+- [ ] Implement Option 1 (compact inline)
+- [ ] Implement Option 2 (detailed separate line) - RECOMMENDED
+- [ ] Implement Option 3 (color-coded rich)
+- [ ] Add style detection and fallback logic
+- [ ] Integrate with Case.launch_case() execution reporting
+- [ ] Integrate with Campaign result tracking
+- [ ] Add threshold alerts (>10% errors, >25% warnings)
+- [ ] Update documentation with new progress format
+- [ ] Add tests for all three options
+- [ ] Test fallback logic across different terminals
+
+**Display Formats:**
+```
+Headless: CASE:test_case: 1/2 [E:0% W:0%]
+
+Compact (default style):
+[CASE:test_case](50.00%)[===========] [1/2][E:0% W:2%][Et:00:00:10][Rt:00:00:10]
+
+Detailed (apt style):
+[CASE:test_case]: 50.0% [============>] [Cases 1/2 | Success 98% | Warnings 2% | Errors 0%]
+
+Detailed (powershell style):
+>> test_case >> 50% [===========   ]
+  Cases: 1/2 | ✓ 98% | ⚠ 2% | ✗ 0%
+
+Rich (with colors):
+[CASE:test_case](50.00%) [===========                    ]
+  Progress: 1/2 | ✓ Success: 98% | ⚠ Warnings: 2% | ✗ Errors: 0%
+  [GREEN]Elapsed: 00:00:10[/GREEN] | [YELLOW]Est. Remaining: 00:00:10[/YELLOW]
+```
+
+---
+
 #### ExecutionSettings Pattern (Architectural)
 **Priority:** HIGH  
 **Complexity:** MEDIUM  
