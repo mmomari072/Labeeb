@@ -235,6 +235,7 @@ class Case(CoupledUnit):
         """
         super().__init__()
         self.name: str = name
+        self.__verbose__: bool = False
         self.database: Optional[Database] = None
         self.attributes: List[str] = []
         self.FlagsMap: Union[FlagsMap, Dict[str, str]] = {}
@@ -502,6 +503,8 @@ class Case(CoupledUnit):
                 f.read()
                 self.input_files.append(f)
                 logger.info(f"File {f.fname} has been added to [{self.name}]. Total: {len(self.input_files)}")
+                if self.__verbose__:
+                    print(f"[{self.name}] Added file: {f.fname}")
             else:
                 logger.warning("Duplicate file ignored.")
         return self
@@ -530,12 +533,16 @@ class Case(CoupledUnit):
             harvester = name_or_harvester
             self.harvesters[harvester.name] = harvester
             self.outputs.setdefault(harvester.name, [])
+            if self.__verbose__:
+                print(f"[{self.name}] Added harvester: {harvester.name}")
             return self
         name = str(name_or_harvester)
         if not name or not file_target:
             raise CaseExecutionError("Harvester name and file_target are required")
         self.harvesters[name] = (pattern, file_target, optional)
         self.outputs.setdefault(name, [])
+        if self.__verbose__:
+            print(f"[{self.name}] Added harvester: {name}")
         return self
 
     def set_assignment_map(
@@ -554,6 +561,8 @@ class Case(CoupledUnit):
         self.assignment_map = mapping
         self.assignment_fmt = fmt
         self.strict_assignments = strict
+        if self.__verbose__:
+            print(f"[{self.name}] Assignment map configured ({len(mapping)} entries)")
         return self
 
     def set_expression_context(
@@ -570,6 +579,8 @@ class Case(CoupledUnit):
         self.expression_context = context or {}
         self.strict_expressions = strict
         self.enable_expressions = True
+        if self.__verbose__:
+            print(f"[{self.name}] Expression context configured")
         return self
 
     def launch_case(self, case_id: Optional[int] = None, **kwargs: Any) -> "Case":
