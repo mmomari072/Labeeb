@@ -1575,22 +1575,39 @@ class Database(dict):
     def __setstate__(self, state: Dict[str, Any]) -> None:
         self.__dict__.update(state)
 
-    def filter(self, **conditions: Any) -> "Database":
+    def filter(self, save: Optional[str] = None, **conditions: Any) -> "Database":
         """Filter database rows by column conditions.
-        
+
         Args:
+            save: Optional file path to save filtered data (csv, json, parquet)
+                 Format auto-detected from extension
             **conditions: Column name = value or callable for filtering
                          E.g., filter(temp=300, pressure__gt=100)
-        
+
         Returns:
-            New Database with filtered rows
+            New Database with filtered rows (optionally saved to file)
+
+        Examples:
+            >>> # Filter and return new database
+            >>> filtered = db.filter(temperature__gt=350, pressure__lte=110)
+            >>>
+            >>> # Filter and save to file
+            >>> filtered = db.filter(save="filtered_cases.csv", temperature__gt=350)
+            >>>
+            >>> # Filter with callable and save
+            >>> filtered = db.filter(
+            ...     save="results.json",
+            ...     stress=lambda x: 200 <= x <= 500
+            ... )
         """
         if not conditions:
+            if save:
+                self.save(save)
             return self
-        
+
         df = self.to_dataframe()
         mask = pd.Series([True] * len(df))
-        
+
         for col_expr, value in conditions.items():
             if '__' in col_expr:
                 col, op = col_expr.rsplit('__', 1)
@@ -1619,9 +1636,63 @@ class Database(dict):
                     mask &= df[col_expr].apply(value)
                 else:
                     mask &= df[col_expr] == value
-        
+
         filtered_df = df[mask]
         filtered_data = {col: filtered_df[col].tolist() for col in filtered_df.columns}
         filtered_data.pop('__db_index__', None)
-        
-        return Database(name=f"{self.name}_filtered", data=filtered_data)
+
+        filtered_db = Database(name=f"{self.name}_filtered", data=filtered_data)
+
+        # Save if requested
+        if save:
+            filtered_db.save(save)
+
+        return filtered_db
+
+    def filter_and_save(self, filepath: str, format: Optional[str] = None, **conditions: Any) -> "Database":
+        """Filter database rows and save to file in one operation.
+
+        Convenience method that combines filtering and saving.
+
+        Args:
+            filepath: Path to save filtered data (csv, json, parquet)
+            format: Optional format override ('csv', 'json', 'parquet')
+                   Auto-detected from filepath extension if not specified
+            **conditions: Column name = value or callable for filtering
+
+        Returns:
+            New Database with filtered rows (saved to file)
+
+        Examples:
+            >>> # Filter and save to CSV
+            >>> filtered = db.filter_and_save(
+            ...     "execution_cases.csv",
+            ...     temperature__gt=350,
+            ...     pressure__lte=110
+            ... )
+            >>>
+            >>> # Filter with callable and save to JSON
+            >>> filtered = db.filter_and_save(
+            ...     "results.json",
+            ...     stress=lambda x: 200 <= x <= 500
+            ... )
+            >>>
+            >>> # Explicit format specification
+            >>> filtered = db.filter_and_save(
+            ...     "data.dat",
+            ...     format="csv",
+            ...     velocity__gte=10
+            ... )
+        """
+        filtered_db = self.filter(**conditions)
+        inferred_format = format
+        if not inferred_format and filepath:
+            ext = filepath.lower().split('.')[-1]
+            if ext in ['csv']:
+                inferred_format = 'csv'
+            elif ext in ['json']:
+                inferred_format = 'json'
+            elif ext in ['parquet', 'pq']:
+                inferred_format = 'parquet'
+        filtered_db.save(filepath, format=inferred_format or 'csv')
+        return filtered_db
