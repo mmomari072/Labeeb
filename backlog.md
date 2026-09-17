@@ -142,6 +142,11 @@ Lambda functions and other unpicklable objects are no longer a blocker for savin
 
 ### 📋 Lower Priority (Future Releases)
 
+- [ ] **Database Filter Enhancement: Attribute Function Linking**
+  - Link filter functions to database attributes for more flexible filtering
+  - Check old implementation for reference on how function linking worked
+  - Enhance current Database.filter() method to support attribute-based function registration
+
 - [ ] Add performance benchmarks for large databases (>100k rows)
 - [ ] Support correlated sampling across OAT attributes (future enhancement)
 - [ ] Add database versioning/schema tracking
