@@ -574,17 +574,21 @@ class Case(CoupledUnit):
         for f in self.pre_functions:
             f(self, **kwargs)
 
-        # In continue mode, execute missing cases (those without existing directories).
-        # In new mode, always execute. In other modes, skip execution.
+        # Determine whether to execute based on run_type:
+        # - "new": Always execute (self.new=True)
+        # - "overwrite": Always execute (like new, but keep directory)
+        # - "continue": Execute only if directory doesn't exist
+        # - "read_only": Never execute
         case_dir_exists = os_ops.isdir(self.current_case_dir)
-        should_execute = self.new or (self.run_type == "continue" and not case_dir_exists)
+        should_execute = self.new or self.run_type == "overwrite" or (self.run_type == "continue" and not case_dir_exists)
 
         if should_execute:
             os_ops.mkdir(self.current_case_dir)
 
-            # Copy required files/directories
-            for obj in self.objects_to_be_copied:
-                os_ops.cp(obj, self.current_case_dir)
+            # Copy required files/directories (only in new mode to avoid overwriting external data in overwrite mode)
+            if self.new:
+                for obj in self.objects_to_be_copied:
+                    os_ops.cp(obj, self.current_case_dir)
 
             # Get flags map values
             row_data = self.database.get_row(idx)
@@ -653,13 +657,20 @@ class Case(CoupledUnit):
         return self.initialization()
 
     def initialization(self) -> "Case":
-        """Clean and initialize case directory layout."""
+        """Clean and initialize case directory layout.
+
+        run_type determines initialization behavior:
+        - "new": Delete all directories, create fresh
+        - "overwrite": Keep directories, overwrite in place
+        - "continue": Keep directories, only create missing
+        - "read_only": Keep directories, don't execute
+        """
         cases_root_path = os_ops.set_fullpath(self.main_dir, self.run_case_main_dir)
-        if self.run_type != "new":
-            self.new = False
-        else:
+        if self.run_type == "new":
             self.new = True
-            os_ops.rmdir(cases_root_path)
+            os_ops.rmdir(cases_root_path)  # Clean before new run
+        else:
+            self.new = False
 
         os_ops.mkdir(cases_root_path)
         return self
