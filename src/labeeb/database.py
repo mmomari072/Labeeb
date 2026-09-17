@@ -646,6 +646,87 @@ class Database(dict):
                 row_filter=row_filter, max_rejections=max_rejections
             )
 
+    def _apply_row_filter_during_sampling(
+        self, attrs: List[Attribute], deferred: List[Attribute], dependencies: Dict[str, List[str]],
+        generated: Dict[str, List[Any]], rng: Any, row_count: int, row_filter: callable,
+        max_rejections: Optional[int]
+    ) -> None:
+        """Apply row filter during attribute addition by filtering Database columns in-place.
+
+        This works on already-added columns by cycling through rows and filtering valid ones.
+        The Database already has all rows added; we filter them down to row_count valid rows.
+        """
+        if max_rejections is None:
+            max_rejections = row_count * 100
+
+        stats = {
+            "total_attempts": 0,
+            "total_accepted": 0,
+            "total_rejected": 0,
+            "acceptance_rate": 0.0,
+        }
+
+        # Get all columns currently in database (non-derived)
+        valid_indices = []
+        current_length = self._get_max_column_length()
+
+        for row_idx in range(current_length):
+            row = self.get_row(row_idx)
+            stats["total_attempts"] += 1
+
+            try:
+                is_valid = row_filter(row)
+            except Exception as exc:
+                logger.debug(f"Row filter evaluation failed for row {row_idx}: {exc}")
+                is_valid = False
+
+            if is_valid:
+                valid_indices.append(row_idx)
+                stats["total_accepted"] += 1
+            else:
+                stats["total_rejected"] += 1
+
+        # If we don't have enough valid rows, warn and suggest n adjustment
+        if stats["total_accepted"] < row_count:
+            acceptance_rate = stats["total_accepted"] / stats["total_attempts"]
+            suggested_n = int(row_count / acceptance_rate) if acceptance_rate > 0 else row_count * 2
+            logger.warning(
+                f"Row filter: only {stats['total_accepted']}/{row_count} valid rows after filtering "
+                f"({acceptance_rate:.1%} acceptance rate). "
+                f"Got {stats['total_accepted']} valid rows instead. "
+                f"To get exactly {row_count} rows: use n={suggested_n} (or relax filter constraints)."
+            )
+
+        if stats["total_accepted"] == 0:
+            raise DatabaseError("Row filter rejected all rows; no valid samples generated")
+
+        # Keep only valid rows by filtering all columns
+        for col_name, col_attr in list(self.items()):
+            if col_name == "__db_index__" or col_name == "__id__":
+                continue
+            if isinstance(col_attr, Attribute):
+                filtered_data = [col_attr[idx] for idx in valid_indices]
+                col_attr[:] = filtered_data
+
+        # Update __id__ and __db_index__ if they exist
+        if "__id__" in self:
+            id_attr = self["__id__"]
+            filtered_ids = [id_attr[idx] for idx in valid_indices]
+            id_attr[:] = filtered_ids
+
+        if "__db_index__" in self:
+            index_attr = self["__db_index__"]
+            filtered_indices = list(range(len(valid_indices)))
+            index_attr[:] = filtered_indices
+
+        self.refresh_index()
+
+        stats["acceptance_rate"] = (
+            stats["total_accepted"] / stats["total_attempts"]
+            if stats["total_attempts"] > 0 else 0.0
+        )
+        self.sampling_stats = stats
+
     def _apply_row_filter(
         self, generated: Dict[str, List[Any]], attrs: List[Attribute], deferred: List[Attribute],
         dependencies: Dict[str, List[str]], rng: Any, method: str, random_reuse: str,
@@ -997,9 +1078,12 @@ class Database(dict):
                                            unit=attr.unit, description=attr.description, Type=attr.type)
                 pending = [item for item in pending if item is not attr]
 
-        # Apply row-by-row validation filter if provided
+        # Apply row-by-row validation filter if provided (use incremental generation, not post-hoc filtering)
         if row_filter is not None:
-            self._apply_row_filter_to_database(row_filter, row_count, max_rejections)
+            self._apply_row_filter_during_sampling(
+                attrs=attrs, deferred=deferred, dependencies=dependencies, generated=generated,
+                rng=rng, row_count=row_count, row_filter=row_filter, max_rejections=max_rejections
+            )
 
     def validate(self) -> None:
         """Validate all Attribute columns inside the database."""
