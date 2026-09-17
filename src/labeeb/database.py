@@ -1574,3 +1574,54 @@ class Database(dict):
 
     def __setstate__(self, state: Dict[str, Any]) -> None:
         self.__dict__.update(state)
+
+    def filter(self, **conditions: Any) -> "Database":
+        """Filter database rows by column conditions.
+        
+        Args:
+            **conditions: Column name = value or callable for filtering
+                         E.g., filter(temp=300, pressure__gt=100)
+        
+        Returns:
+            New Database with filtered rows
+        """
+        if not conditions:
+            return self
+        
+        df = self.to_dataframe()
+        mask = pd.Series([True] * len(df))
+        
+        for col_expr, value in conditions.items():
+            if '__' in col_expr:
+                col, op = col_expr.rsplit('__', 1)
+                if col not in df.columns:
+                    raise DatabaseError(f"Column '{col}' not found")
+                if op == 'gt':
+                    mask &= df[col] > value
+                elif op == 'lt':
+                    mask &= df[col] < value
+                elif op == 'gte':
+                    mask &= df[col] >= value
+                elif op == 'lte':
+                    mask &= df[col] <= value
+                elif op == 'eq':
+                    mask &= df[col] == value
+                elif op == 'ne':
+                    mask &= df[col] != value
+                elif op == 'in':
+                    mask &= df[col].isin(value)
+                else:
+                    raise DatabaseError(f"Unknown operator: {op}")
+            else:
+                if col_expr not in df.columns:
+                    raise DatabaseError(f"Column '{col_expr}' not found")
+                if callable(value):
+                    mask &= df[col_expr].apply(value)
+                else:
+                    mask &= df[col_expr] == value
+        
+        filtered_df = df[mask]
+        filtered_data = {col: filtered_df[col].tolist() for col in filtered_df.columns}
+        filtered_data.pop('__db_index__', None)
+        
+        return Database(name=f"{self.name}_filtered", data=filtered_data)
