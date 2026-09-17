@@ -1,6 +1,6 @@
 # Labeeb Development Backlog
 
-**Last Updated:** 2026-09-16
+**Last Updated:** 2026-09-17
 
 ## Completed (v2.1.0+)
 
@@ -35,6 +35,36 @@
 - Added detailed display examples to docs/USER_MANUAL.md
 - Documented all display methods: `to_dataframe()`, `rows`, `get_row()`, `plot()`, export
 - Users can now easily view database data in tabular format
+
+### ✅ Case Info JSON with Timestamped Execution Commands
+**Commits:** `58a3065`, `196785c`  
+**Date:** 2026-09-17
+
+- Automatically generate `case_info.json` in each case directory during `launch_case()`
+- Track complete execution history with timestamped commands:
+  - Command text, start timestamp, duration, exit code, execution status
+  - Enables detection of command changes between executions
+  - Supports conditional task execution based on command modifications
+- Include comprehensive case metadata:
+  - Case ID, name, execution timestamp
+  - Database attributes snapshot (validate case state consistency)
+  - Dynamic attribute values (track computed quantities)
+  - Execution status and timing
+  - All harvested outputs
+  - Metadata: directory path, user, run_type, version
+- Enable case mode workflows:
+  - Validate case state hasn't changed
+  - Detect when commands modified (re-execution needed)
+  - Track full command history with timing
+  - Support smart case re-execution strategies
+- Added comprehensive documentation with 5 real-world use cases:
+  - Case mode validation
+  - Command change detection
+  - Execution history tracking
+  - Case comparison
+  - Workflow orchestration
+
+**File:** `docs/CASE_INFO_JSON.md` (453 lines)
 
 ### ✅ OATConstructor Factorial Design Fix
 **Commits:** `d105b94`, `bdd2079`  
