@@ -1,4 +1,4 @@
-# Labeeb API-First Training Curriculum (v2.0.0)
+# Labeeb API-First Training Curriculum (v2.3.3)
 
 > **Goal**: Master sensitivity analysis (SA) and uncertainty analysis (UA) workflows using the Labeeb Python API.  
 > **Audience**: Python developers, simulation engineers, researchers  
@@ -57,7 +57,7 @@ cd /path/to/Labeeb
 python -m pip install -e .[dev]
 
 # Verify installation
-python -c "import labeeb; print(labeeb.__version__)"  # v2.0.0
+python -c "import labeeb; print(labeeb.__version__)"  # v2.3.3
 ```
 
 **Exercise 0.1**: First Script
@@ -200,6 +200,22 @@ db = Database(data=grid)
 print(f"Generated {len(db)} cases")  # 3 values, including the baseline
 # For multiple attributes OATConstructor produces the full factorial product.
 ```
+
+**Exercise 2.3**: Constrained simplex sampling
+
+```python
+from labeeb import SimplexDOE
+
+design = SimplexDOE(total=100.0, min_values=[5.0, 10.0, 0.0], seed=42).generate(
+    n_samples=50, n_vars=3
+)
+assert (design >= [5.0, 10.0, 0.0]).all()
+assert (design.sum(axis=1) <= 100.0).all()
+```
+
+`SimplexDOE` samples the feasible volume, including designs whose sum is below
+the limit. Use it for layer thicknesses, mixture fractions, or any non-negative
+variables with a shared upper sum constraint.
 
 **Exercise 2.3**: Per-Attribute Sampling (Independent Distributions)
 
