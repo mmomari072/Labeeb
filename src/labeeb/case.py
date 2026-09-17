@@ -7,6 +7,8 @@ import json
 import logging
 import os
 import shlex
+import shutil
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
@@ -277,6 +279,8 @@ class Case(CoupledUnit):
         self.objects_to_be_copied: List[str] = []
         self.new: bool = True
         self._run_type = "read_only"
+        self.new_data_policy: str = "raise"
+        self.backup_dir: Optional[str] = None
         self.case_id: int = 0
 
         # Post-output hooks: (name, callable) pairs run after outputs/harvesters
@@ -735,6 +739,18 @@ class Case(CoupledUnit):
         cases_root_path = os_ops.set_fullpath(self.main_dir, self.run_case_main_dir)
         if self.run_type == "new":
             self.new = True
+            if os.path.isdir(cases_root_path) and os.listdir(cases_root_path):
+                policy = self.new_data_policy
+                if policy == "raise":
+                    raise CaseExecutionError(
+                        f"Existing non-empty run directory '{cases_root_path}'. "
+                        "Set new_data_policy='backup' or 'overwrite' before run_type='new'."
+                    )
+                if policy == "backup":
+                    destination = self.backup_dir or f"{cases_root_path}_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+                    shutil.move(cases_root_path, destination)
+                elif policy != "overwrite":
+                    raise CaseExecutionError("new_data_policy must be 'raise', 'backup', or 'overwrite'")
             os_ops.rmdir(cases_root_path)  # Clean before new run
         else:
             self.new = False
