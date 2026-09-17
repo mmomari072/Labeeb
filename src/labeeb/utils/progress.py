@@ -320,10 +320,7 @@ class ProgressBar:
         indent_space = self._indent_prefix()
         pct = 100 * self._progress
 
-        # Determine display format based on capabilities
-        format_type = self._get_display_format()
-
-        if format_type == "headless":
+        if self._headless:
             # Plain one-line-per-item fallback (no carriage-return redraws).
             health_str = self._get_health_metrics_str("compact")
             metrics_part = f" {health_str}" if health_str else ""
@@ -331,25 +328,16 @@ class ProgressBar:
             self._stream.flush()
             return
 
-        # Get health metrics in appropriate format
-        health_str = self._get_health_metrics_str(format_type)
-        health_part = f" [{health_str}]" if health_str else ""
+        # Use compact inline format for all TTY modes (no newlines, fixed positioning)
+        health_str = self._get_health_metrics_str("compact")
+        health_part = f" {health_str}" if health_str else ""
 
         if self.style == "default":
             filled = "=" * len_char
             empty = " " * (self.col_len - len_char)
-
-            if format_type == "rich" and self.health_metrics:
-                # Rich format: show metrics below progress bar
-                self._stream.write(
-                    f"\r{indent_space}[CASE:{self.name}]({pct:6.2f}%)[{filled}{empty}] [Et:{elapsed_str}][Rt:{remaining_str}]\n"
-                )
-                self._stream.write(f"{indent_space}  {health_str}\r")
-            else:
-                # Compact format: inline metrics
-                self._stream.write(
-                    f"\r{indent_space}[CASE:{self.name}]({pct:6.2f}%)[{filled}{empty}]{health_part} [Et:{elapsed_str}][Rt:{remaining_str}]"
-                )
+            self._stream.write(
+                f"\r{indent_space}[CASE:{self.name}]({pct:6.2f}%)[{filled}{empty}]{health_part} [Et:{elapsed_str}][Rt:{remaining_str}]"
+            )
             self._stream.flush()
             return
 
@@ -357,26 +345,14 @@ class ProgressBar:
             apt_bar = "=" * len_char
             if len_char < self.col_len:
                 apt_bar += ">" + " " * (self.col_len - len_char - 1)
-
-            if format_type == "rich" and self.health_metrics:
-                # Detailed format
-                self._stream.write(f"\r{indent_space}{self.name}: {pct:5.1f}% [{apt_bar}]\n")
-                self._stream.write(f"{indent_space}  {health_str}\r")
-            else:
-                self._stream.write(f"\r{indent_space}{self.name}: {pct:5.1f}% [{apt_bar}]{health_part}")
+            self._stream.write(f"\r{indent_space}{self.name}: {pct:5.1f}% [{apt_bar}]{health_part}")
             self._stream.flush()
             return
 
         # powershell
         filled = "=" * len_char
         empty = " " * (self.col_len - len_char)
-
-        if format_type == "rich" and self.health_metrics:
-            # Detailed format
-            self._stream.write(f"\r{indent_space}>> {self.name} >> {pct:6.2f}% [{filled}{empty}]\n")
-            self._stream.write(f"{indent_space}  {health_str}\r")
-        else:
-            self._stream.write(f"\r{indent_space}>> {self.name} >> {pct:6.2f}% [{filled}{empty}]{health_part}")
+        self._stream.write(f"\r{indent_space}>> {self.name} >> {pct:6.2f}% [{filled}{empty}]{health_part}")
         self._stream.flush()
 
     def _finish_line(self) -> None:
