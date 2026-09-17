@@ -285,6 +285,7 @@ class Case(CoupledUnit):
         # Dynamic attributes: Functions computed on-demand during flag replacement
         # Maps attribute_name -> callable(row) -> value
         self.dynamic_attributes: Dict[str, Callable[[pd.Series], Any]] = {}
+        self.dynamic_attribute_targets: Dict[str, str] = {}
 
         # Failure-handling policy (LAB-FAILURE-POLICY-01):
         #   command_failure_policy: "stop" (default, current semantics - raise),
@@ -358,7 +359,7 @@ class Case(CoupledUnit):
         return self
 
     def register_dynamic_attribute(self, attr_name: str, func: Callable[[pd.Series], Any],
-                                  allow_override: bool = False) -> "Case":
+                                  allow_override: bool = False, target: str = "inputs") -> "Case":
         """
         Register a function to compute an attribute dynamically.
 
@@ -383,6 +384,8 @@ class Case(CoupledUnit):
                 lambda row: 100 - row['layer1'] - row['layer2']
             )
         """
+        if target not in {"inputs", "outputs", "both"}:
+            raise CaseExecutionError("target must be 'inputs', 'outputs', or 'both'")
         # Check for naming conflicts with database attributes
         if self.database is not None:
             db_columns = set(self.database.to_dataframe().columns) if hasattr(self.database, 'to_dataframe') else set()
@@ -398,6 +401,7 @@ class Case(CoupledUnit):
                     )
 
         self.dynamic_attributes[attr_name] = func
+        self.dynamic_attribute_targets[attr_name] = target
         logger.info(f"Registered dynamic attribute: {attr_name}")
         return self
 
@@ -430,7 +434,7 @@ class Case(CoupledUnit):
                 return row[attr_name]
 
         # Try dynamic attributes
-        if attr_name in self.dynamic_attributes:
+        if attr_name in self.dynamic_attributes and self.dynamic_attribute_targets.get(attr_name, "inputs") in {"inputs", "both"}:
             func = self.dynamic_attributes[attr_name]
             # Check if function accepts resolve parameter (supports dynamic dependencies)
             import inspect
@@ -824,6 +828,12 @@ class Case(CoupledUnit):
             [input_frame.reset_index(drop=True), output_frame.reset_index(drop=True)],
             axis=1,
         )
+        output_attrs = {
+            name: func for name, func in self.dynamic_attributes.items()
+            if self.dynamic_attribute_targets.get(name, "inputs") in {"outputs", "both"}
+        }
+        for name, func in output_attrs.items():
+            self.outputs_db[name] = self.outputs_db.apply(func, axis=1)
 
         return self
 
