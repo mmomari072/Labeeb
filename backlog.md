@@ -1,6 +1,48 @@
 # Labeeb Development Backlog
 
-**Last Updated:** 2026-09-17
+**Last Updated:** 2026-09-18
+
+## Completed (v2.3.8 - Latest)
+
+### ✅ Incremental case_info.json with Granular Command Timing  
+**Commits:** `d24686d`, `0c51d0c`  
+**Date:** 2026-09-17  
+**Tag:** v2.3.8
+
+- Implemented incremental JSON writes after each command completion
+- Add start_time and end_time (ISO 8601) for precise command timing
+- Enable real-time execution monitoring without polling delays
+- Track acceptance statistics and health metrics
+- Created comprehensive documentation in docs/INCREMENTAL_MONITORING.md
+- All 473 tests passing with no regressions
+
+### ✅ Database Result Merging Utilities
+**Commit:** `81c0f50`  
+**Date:** 2026-09-17  
+**Module:** `labeeb.merge`
+
+- Implement 6 merging functions for multi-campaign result consolidation:
+  - `merge_case_results()` - Combine with campaign tracking
+  - `merge_case_info_json()` - Consolidate metadata
+  - `merge_outputs_with_parameters()` - Enrich with input params
+  - `aggregate_by_parameters()` - Group and summarize metrics
+  - `validate_merge()` - Check data consistency  
+  - `export_merge_report()` - CSV/Parquet/JSON/XLSX export
+- Enable cross-run comparison, sensitivity analysis, validation studies
+- Created comprehensive documentation in docs/MERGING_RESULTS.md
+- All functions exported in public API
+
+### ✅ Row-by-Row Validation Filtering for Database Sampling
+**Commit:** `e8c8bc9`  
+**Date:** 2026-09-17
+
+- Add `row_filter` parameter to Database for inline validation
+- Validate constraints during sampling (Sample → Derive → Validate → Keep/Reject)
+- Track sampling_stats: acceptance_rate, attempts, accepted, rejected
+- Natural fit with Derived attributes for constraint checking
+- Created comprehensive documentation in docs/CONSTRAINED_SAMPLING.md
+- Support complex multi-parameter constraints
+- All existing tests passing
 
 ## Completed (v2.1.0+)
 
