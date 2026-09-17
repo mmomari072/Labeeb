@@ -137,6 +137,21 @@ def test_case_integration_with_typed_harvesters(tmp_path: Path):
     assert case.outputs_db["RHO"].tolist() == [19.0, 19.5]
 
 
+def test_output_dynamic_attribute_accepts_resolver_callback(tmp_path: Path):
+    case = Case(name="output_dynamic", output_files={})
+    case.database = Database(data={"POWER": [2.0]})
+    case.main_dir = str(tmp_path)
+    case.run_case_main_dir = "runs"
+    case.run_type = "new"
+    case.exe_cmd = ["echo 'done' > output.txt"]
+    case.shell = True
+    case.register_dynamic_attribute(
+        "double_power", lambda row, resolve: resolve("POWER", row) * 2, target="outputs"
+    )
+    case.launch()
+    assert case.outputs_db["double_power"].tolist() == [4.0]
+
+
 def test_case_harvester_missing_field_fails_case_execution(tmp_path: Path):
     case = Case(name="harvester_fail", output_files={})
     case.database = Database(data={"RHO": [19.0]})

@@ -833,7 +833,14 @@ class Case(CoupledUnit):
             if self.dynamic_attribute_targets.get(name, "inputs") in {"outputs", "both"}
         }
         for name, func in output_attrs.items():
-            self.outputs_db[name] = self.outputs_db.apply(func, axis=1)
+            import inspect
+            parameters = inspect.signature(func).parameters
+            if len(parameters) >= 2:
+                self.outputs_db[name] = self.outputs_db.apply(
+                    lambda row: func(row, self.resolve_attribute_value), axis=1
+                )
+            else:
+                self.outputs_db[name] = self.outputs_db.apply(func, axis=1)
 
         return self
 
