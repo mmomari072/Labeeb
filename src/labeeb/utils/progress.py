@@ -284,7 +284,9 @@ class ProgressBar:
         times_last = self.timer._times[-1] if self.timer._times else 1
         if times_last > 0:
             avg_time = delta_last / times_last
-            self._time_remaining = (self.end - self._index - 1) * avg_time
+            # Remaining cases = (end - current_index)
+            # No -1: we need to account for all remaining cases including current one
+            self._time_remaining = (self.end - self._index) * avg_time
         else:
             self._time_remaining = 0.0
 
