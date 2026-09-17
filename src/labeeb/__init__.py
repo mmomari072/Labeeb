@@ -114,7 +114,7 @@ from .report import write_html_report
 from .logging_config import CaseLoggerAdapter, configure_logging
 from .utils.file_io import File, evaluate_expression, format_value
 
-__version__ = "2.1.0"
+__version__ = "2.2.0"
 __author__ = "Mohammed Omari"
 
 __all__ = [
