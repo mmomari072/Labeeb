@@ -191,6 +191,8 @@ class Attribute(list):
             sampling: Deferred distribution, OAT, constant, or derived specification;
                 mutually exclusive with data. Materialized by Database(attributes=...).
         """
+        if not isinstance(name, str) or not name.strip():
+            raise DatabaseError("Attribute name must be a non-empty string")
         super().__init__()
         self.name: str = name
         self.description: Optional[str] = description
@@ -1344,6 +1346,8 @@ class Database(dict):
         return self
 
     def __setitem__(self, name: str, value: Any) -> None:
+        if not isinstance(name, str) or not name.strip():
+            raise DatabaseError("Database column name must be a non-empty string")
         if not isinstance(value, (Attribute, list, tuple)):
             if len(self.keys()) != 0:
                 raise TypeError(f"Bad Data Type assigned to Database column: {type(value)}")
