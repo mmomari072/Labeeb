@@ -37,27 +37,41 @@
 - Users can now easily view database data in tabular format
 
 ### ✅ Database Filter with Save Option for Execution Dataset Preparation
-**Commits:** `1c8d63d`, `c45c3e5`  
+**Commits:** `1c8d63d`, `c45c3e5`, `8377019`, `8620f03`  
 **Date:** 2026-09-17
 
+**Phase 1: File Save Option**
 - Enhance `Database.filter()` method with optional `save` parameter
 - Automatically export filtered data to CSV/JSON/Parquet
 - Add `filter_and_save()` convenience method for explicit filtering+saving
 - Support format auto-detection from file extension (.csv, .json, .parquet, .pq)
+
+**Phase 2: RAM-Based Execution (return_data)**
+- Add `return_data` parameter to filter() for direct memory usage
+- When `return_data=True`: returns `{column: [values]}` dict instead of Database object
+- Eliminates Database object creation overhead for execution prep
+- Enables fastest path: filter → data dict → Database(data=dict) → execute
+- Support combining save and return_data for simultaneous backup and execution
+
+**Features:**
+- Support all filter operators and callable predicates
+- Format auto-detection from filepath extension
+- Direct RAM data dict for memory-efficient execution
+- Optional simultaneous file export and data return
 - Enable creation of execution-ready datasets:
   - Filter to relevant cases before execution
   - Create reproducible test/validation subsets
   - Share filtered data with collaborators
   - Reduce execution time by running only relevant cases
-- Support all filter operators and callable predicates
-- Documentation includes 4 real-world workflow examples:
-  - Create execution dataset for case runs
-  - Split data for training/validation
-  - Multi-stage progressive filtering
-  - Dataset comparison by material/parameter
-- Integration patterns with Case.launch() for filtered execution
 
-**File:** `docs/DATABASE_FILTER_SAVE.md` (438 lines)
+**Documentation:** `docs/DATABASE_FILTER_SAVE.md` (520+ lines)
+- 3 usage methods with examples
+- RAM-based execution patterns (most efficient)
+- 4+ real-world workflow examples
+- Complete API reference
+- Integration with Case.launch()
+
+**Tests:** All 469 tests passing
 
 ### ✅ Case Info JSON with Timestamped Execution Commands
 **Commits:** `58a3065`, `196785c`  
