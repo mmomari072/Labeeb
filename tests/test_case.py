@@ -238,7 +238,8 @@ def test_case_parallel_log_timeout():
             assert c.execution_history[0]["case_id"] == 0
             assert c.execution_history[0]["exit_code"] == 0
             assert c.execution_history[0]["status"] == "SUCCESS"
-            assert "timestamp" in c.execution_history[0]
+            assert "start_time" in c.execution_history[0]
+            assert "end_time" in c.execution_history[0]
             assert "duration_seconds" in c.execution_history[0]
 
             # Check log files exist and are populated

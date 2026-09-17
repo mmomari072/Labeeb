@@ -916,9 +916,10 @@ class Case(CoupledUnit):
                         break  # cancellation requested: skip this and later attempts
                     attempts_left -= 1
 
-                    # Record execution details
+                    # Record execution details with granular timing
                     t_start = time.time()
-                    t_stamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    dt_start = datetime.now()
+                    start_time_iso = dt_start.isoformat()
 
                     if isinstance(self.execution_backend, LocalExecutionBackend):
                         # Secure-execution opt-in applies to the local backend.
@@ -941,6 +942,8 @@ class Case(CoupledUnit):
                     code = result.returncode
 
                     t_duration = time.time() - t_start
+                    dt_end = datetime.now()
+                    end_time_iso = dt_end.isoformat()
                     status_str = "SUCCESS" if code == 0 else ("TIMEOUT" if code == -999 else "FAILED")
                     message = None
                     if result.event is not None:
@@ -959,13 +962,15 @@ class Case(CoupledUnit):
                             "command": self._redact_cmd(cmd),
                             "exit_code": code,
                             "status": status_str,
-                            "timestamp": t_stamp,
+                            "start_time": start_time_iso,
+                            "end_time": end_time_iso,
                             "duration_seconds": round(result.duration_seconds or t_duration, 3),
                             "message": message or f"attempt failed; {attempts_left} retr{'y' if attempts_left == 1 else 'ies'} left",
                         })
                         if result.event is not None:
                             self.execution_history[-1].update(result.event.to_dict())
                             self.execution_history[-1]["execution_event"] = result.event.to_dict()
+                        self._save_case_info_json()
                         continue
 
                     self.execution_history.append({
@@ -973,7 +978,8 @@ class Case(CoupledUnit):
                         "command": self._redact_cmd(cmd),
                         "exit_code": code,
                         "status": status_str,
-                        "timestamp": t_stamp,
+                        "start_time": start_time_iso,
+                        "end_time": end_time_iso,
                         "duration_seconds": round(result.duration_seconds or t_duration, 3)
                     })
                     if result.event is not None:
@@ -989,10 +995,13 @@ class Case(CoupledUnit):
                             )
                             # Record the failure in the last history entry's message
                             self.execution_history[-1]["message"] = self.failure
+                            self._save_case_info_json()
                             break  # skip remaining commands for this case
+                        self._save_case_info_json()
                         raise CaseExecutionError(
                             f"Simulation command failed for case {self.case_id}: '{self._redact_cmd(cmd)}' ({status_str}, exit code {code})"
                         )
+                    self._save_case_info_json()
                     exit_codes.append(code)
                     break
         except Exception as e:
@@ -1233,7 +1242,7 @@ class Case(CoupledUnit):
         return self
 
     def _generate_case_info_json(self) -> Dict[str, Any]:
-        """Generate case metadata with timestamped execution commands."""
+        """Generate case metadata with granular command execution timing (start_time, end_time)."""
         from datetime import datetime
 
         row_data = self.database.get_row(self.case_id) if self.database else {}
@@ -1249,12 +1258,13 @@ class Case(CoupledUnit):
             } if hasattr(self, 'dynamic_attributes') and self.dynamic_attributes else {},
             "execution": {
                 "status": "success" if not getattr(self, '_case_failed', False) else "failed",
-                "start_time": self.execution_history[0]["timestamp"] if self.execution_history else None,
-                "end_time": self.execution_history[-1]["timestamp"] if self.execution_history else None,
+                "start_time": self.execution_history[0].get("start_time") if self.execution_history else None,
+                "end_time": self.execution_history[-1].get("end_time") if self.execution_history else None,
                 "commands_executed": [
                     {
                         "command": cmd["command"],
-                        "timestamp": cmd["timestamp"],
+                        "start_time": cmd.get("start_time"),
+                        "end_time": cmd.get("end_time"),
                         "duration_seconds": cmd.get("duration_seconds"),
                         "exit_code": cmd["exit_code"],
                         "status": cmd["status"],
@@ -1274,7 +1284,7 @@ class Case(CoupledUnit):
         return case_info
 
     def _save_case_info_json(self) -> None:
-        """Save case_info.json file in the case directory with timestamped commands."""
+        """Incrementally save case_info.json file in the case directory with command timing."""
         import json
 
         if not self.current_case_dir or not os_ops.isdir(self.current_case_dir):
@@ -1286,7 +1296,8 @@ class Case(CoupledUnit):
             info_path = os.path.join(self.current_case_dir, "case_info.json")
             with open(info_path, "w", encoding="utf-8") as f:
                 json.dump(case_info, f, indent=2, default=str)
-            logger.info(f"Saved case_info.json for case {self.case_id} at {info_path}")
+            num_cmds = len(self.execution_history)
+            logger.debug(f"Updated case_info.json for case {self.case_id}: {num_cmds} command(s) executed, status={case_info['execution']['status']}")
         except Exception as e:
             logger.error(f"Failed to save case_info.json for case {self.case_id}: {e}", exc_info=True)
 
