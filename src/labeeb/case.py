@@ -1278,6 +1278,7 @@ class Case(CoupledUnit):
         import json
 
         if not self.current_case_dir or not os_ops.isdir(self.current_case_dir):
+            logger.debug(f"Skipping case_info.json: current_case_dir={self.current_case_dir}, exists={os_ops.isdir(self.current_case_dir) if self.current_case_dir else False}")
             return
 
         try:
@@ -1285,9 +1286,9 @@ class Case(CoupledUnit):
             info_path = os.path.join(self.current_case_dir, "case_info.json")
             with open(info_path, "w", encoding="utf-8") as f:
                 json.dump(case_info, f, indent=2, default=str)
-            logger.debug(f"Saved case_info.json for case {self.case_id}")
+            logger.info(f"Saved case_info.json for case {self.case_id} at {info_path}")
         except Exception as e:
-            logger.warning(f"Failed to save case_info.json: {e}")
+            logger.error(f"Failed to save case_info.json for case {self.case_id}: {e}", exc_info=True)
 
     def update_db(self, **kwargs: Any) -> None:
         """Mock method for updating database in subsequent couplers."""
