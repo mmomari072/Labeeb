@@ -113,6 +113,14 @@ from .ai import (
 from .report import write_html_report
 from .logging_config import CaseLoggerAdapter, configure_logging
 from .utils.file_io import File, evaluate_expression, format_value
+from .merge import (
+    merge_case_results,
+    merge_case_info_json,
+    merge_outputs_with_parameters,
+    aggregate_by_parameters,
+    validate_merge,
+    export_merge_report,
+)
 
 __version__ = "2.3.8"
 __author__ = "Mohammed Omari"
@@ -131,6 +139,7 @@ __all__ = [
     "Constant", "Derived", "Normal", "OAT", "Uniform",
     "correlated_normal_sample", "truncated_normal_sample", "simplex_sample",
     "Surrogate", "PolynomialSurrogate", "GaussianProcessSurrogate", "RadialBasisSurrogate",
+    "merge_case_results", "merge_case_info_json", "merge_outputs_with_parameters", "aggregate_by_parameters", "validate_merge", "export_merge_report",
 ]
 
 def print_banner() -> None:
