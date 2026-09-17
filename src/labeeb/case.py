@@ -225,6 +225,19 @@ class Case(CoupledUnit):
         cancelled (bool): Cancellation status flag for early termination.
     """
 
+    @property
+    def run_type(self) -> str:
+        return self._run_type
+
+    @run_type.setter
+    def run_type(self, value: str) -> None:
+        allowed = {"new", "overwrite", "continue", "read_only"}
+        if value not in allowed:
+            raise CaseExecutionError(
+                f"run_type must be one of {sorted(allowed)}, got {value!r}"
+            )
+        self._run_type = value
+
     def __init__(self, name: str = "", output_files: Optional[Dict[str, List[str]]] = None, **kwargs: Any):
         """
         Initialize a Case.
@@ -257,7 +270,7 @@ class Case(CoupledUnit):
 
         self.objects_to_be_copied: List[str] = []
         self.new: bool = True
-        self.run_type: str = "read_only"
+        self._run_type = "read_only"
         self.case_id: int = 0
 
         # Post-output hooks: (name, callable) pairs run after outputs/harvesters

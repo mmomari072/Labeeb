@@ -301,3 +301,11 @@ Lambda functions and other unpicklable objects are no longer a blocker for savin
 - Comprehensive parameter validation
 - Full test coverage for new features
 - Clear documentation and examples
+# API validation hardening
+
+- [ ] Add validated property setters for Case, Coupler, Database, Attribute,
+  FlagsMap, harvesters, campaign manifests, and optimizer configuration.
+- [ ] Preserve public assignment syntax while rejecting invalid types, ranges,
+  enum values, and incompatible cross-field combinations.
+- [ ] Add focused tests and document the validation contract; target the 2.4.0
+  minor release.
