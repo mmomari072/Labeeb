@@ -646,6 +646,151 @@ class Database(dict):
                 row_filter=row_filter, max_rejections=max_rejections
             )
 
+    def _rejection_sample_pseudo_oat_filter(
+        self, attrs: List[Attribute], deferred: List[Attribute], dependencies: Dict[str, List[str]],
+        rng: Any, row_count: int, row_filter: callable, max_rejections: Optional[int],
+        generated: Dict[str, List[Any]]
+    ) -> None:
+        """Pseudo-OAT rejection sampling: iterate OAT points, rejection sample non-OAT attributes.
+
+        For each OAT design point:
+          1. Set OAT attribute value
+          2. Rejection sample non-OAT attributes until row passes filter
+          3. Move to next OAT point
+        """
+        if max_rejections is None:
+            max_rejections = row_count * 100
+
+        stats = {
+            "total_attempts": 0,
+            "total_accepted": 0,
+            "total_rejected": 0,
+            "acceptance_rate": 0.0,
+        }
+
+        oat_attrs = [a for a in attrs if isinstance(a.sampling, OAT)]
+        non_oat_attrs = [a for a in attrs if not isinstance(a.sampling, Derived) and not isinstance(a.sampling, OAT)]
+
+        # Get OAT design points
+        oat_design_length = len(generated[oat_attrs[0].name]) if oat_attrs and oat_attrs[0].name in generated else 1
+
+        # Initialize result columns
+        result_data: Dict[str, List[Any]] = {attr.name: [] for attr in attrs if not isinstance(attr.sampling, Derived)}
+
+        # Iterate through each OAT design point
+        for oat_idx in range(oat_design_length):
+            consecutive_rejections = 0
+
+            while True:  # Keep trying non-OAT samples for this OAT point
+                stats["total_attempts"] += 1
+                row_data: Dict[str, Any] = {}
+
+                try:
+                    # Set OAT values from the pre-generated design
+                    for attr in oat_attrs:
+                        if attr.name in generated and oat_idx < len(generated[attr.name]):
+                            row_data[attr.name] = generated[attr.name][oat_idx]
+
+                    # Sample non-OAT attributes
+                    for attr in non_oat_attrs:
+                        spec = attr.sampling
+
+                        if isinstance(spec, Constant):
+                            value = spec.value
+                        elif isinstance(spec, Uniform):
+                            value = rng.uniform(spec.low, spec.high)
+                        elif isinstance(spec, Normal):
+                            value = rng.normal(spec.mean, spec.std)
+                        elif callable(getattr(spec, "draw", None)):
+                            values = spec.draw(1, rng)
+                            value = values[0] if values else None
+                        elif hasattr(spec, "ppf"):
+                            prob = rng.random()
+                            value = spec.ppf(prob)
+                        else:
+                            raise DatabaseError(f"Cannot sample {attr.name}: unsupported sampling spec")
+
+                        row_data[attr.name] = value
+
+                    # Evaluate derived attributes
+                    for attr in deferred:
+                        spec = attr.sampling
+
+                        if isinstance(spec.function, str):
+                            result = eval(spec.function, {"__builtins__": {}}, row_data)
+                        elif callable(spec.function):
+                            result = spec.function(row_data)
+                        else:
+                            result = spec.function
+
+                        row_data[attr.name] = result
+
+                except Exception as exc:
+                    logger.debug(f"Sampling/derivation failed: {exc}")
+                    consecutive_rejections += 1
+                    if consecutive_rejections > max_rejections:
+                        raise DatabaseError(
+                            f"Pseudo-OAT rejection sampling: {consecutive_rejections} consecutive rejections "
+                            f"for OAT point {oat_idx}; check filter constraints or increase max_rejections"
+                        )
+                    continue
+
+                # Apply filter
+                try:
+                    is_valid = row_filter(row_data)
+                except Exception as exc:
+                    logger.debug(f"Row filter evaluation failed: {exc}")
+                    is_valid = False
+
+                if is_valid:
+                    # Keep this row and move to next OAT point
+                    for attr_name, value in row_data.items():
+                        if attr_name in result_data:
+                            result_data[attr_name].append(value)
+                    stats["total_accepted"] += 1
+                    break  # Move to next OAT design point
+                else:
+                    # Reject and retry non-OAT samples for same OAT point
+                    stats["total_rejected"] += 1
+                    consecutive_rejections += 1
+                    if consecutive_rejections > max_rejections:
+                        raise DatabaseError(
+                            f"Pseudo-OAT rejection sampling: {consecutive_rejections} consecutive rejections "
+                            f"for OAT point {oat_idx}; check filter constraints or increase max_rejections"
+                        )
+
+        # Update database columns
+        for col_name, col_attr in list(self.items()):
+            if col_name in ("__db_index__", "__id__"):
+                continue
+            if col_name in result_data:
+                col_attr[:] = result_data[col_name]
+
+        # Update ID columns
+        new_row_count = len(result_data[list(result_data.keys())[0]]) if result_data else 0
+        if "__id__" in self:
+            id_attr = self["__id__"]
+            id_attr[:] = list(range(new_row_count))
+
+        if "__db_index__" in self:
+            idx_attr = self["__db_index__"]
+            idx_attr[:] = list(range(new_row_count))
+
+        # Recompute derived attributes
+        self.refresh_index()
+        for attr in deferred:
+            if attr.name in self:
+                self.remove_derived_attribute(attr.name, drop_column=True)
+            self.add_derived_attribute(attr.name, attr.sampling.function,
+                                     dependencies=dependencies[attr.name],
+                                     unit=attr.unit, description=attr.description, Type=attr.type)
+
+        stats["acceptance_rate"] = (
+            stats["total_accepted"] / stats["total_attempts"]
+            if stats["total_attempts"] > 0 else 0.0
+        )
+        self.sampling_stats = stats
+
     def _rejection_sample_with_filter(
         self, attrs: List[Attribute], deferred: List[Attribute], dependencies: Dict[str, List[str]],
         spec_attrs: List[Attribute], rng: Any, row_count: int, row_filter: callable,
@@ -653,13 +798,23 @@ class Database(dict):
     ) -> None:
         """Rejection sampling: generate rows one-at-a-time until n valid rows collected.
 
-        Loop:
-            1. Sample ONE row from each attribute
-            2. Evaluate derived attributes
-            3. Check row_filter(row)
-            4. If valid → keep, if invalid → generate new row
-            5. Continue until n valid rows
+        Handles two cases:
+        1. No OAT: Standard rejection sampling (sample all, validate, reject/accept)
+        2. With OAT: Pseudo-OAT rejection sampling (iterate OAT points, rejection sample non-OAT)
         """
+        # Detect OAT attributes
+        oat_attrs = [a for a in attrs if isinstance(a.sampling, OAT)]
+
+        if oat_attrs:
+            # Use pseudo-OAT rejection sampling
+            self._rejection_sample_pseudo_oat_filter(
+                attrs=attrs, deferred=deferred, dependencies=dependencies,
+                rng=rng, row_count=row_count, row_filter=row_filter,
+                max_rejections=max_rejections, generated=generated
+            )
+            return
+
+        # Standard rejection sampling (no OAT)
         if max_rejections is None:
             max_rejections = row_count * 100
 
