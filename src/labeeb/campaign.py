@@ -363,19 +363,25 @@ class Campaign:
         case.run_case_main_dir = str(execution.get("run_dir", f"{self.manifest.name}_runs"))
         case.run_type = "new"
         case.exe_cmd = list(self.manifest.commands)
+
+        # Route execution settings through ExecutionSettings in one shot
+        # (avoids per-field DeprecationWarning noise from the legacy
+        # Case attribute shims and re-validates only once).
+        execution_updates: Dict[str, Any] = {
+            "capture_output": bool(execution.get("capture_output", False)),
+            "shell": bool(execution.get("shell", False)),
+        }
         if "timeout" in execution:
-            case.timeout = execution["timeout"]
+            execution_updates["timeout"] = execution["timeout"]
         if "log_file" in execution:
-            case.log_file = execution["log_file"]
-        case.capture_output = bool(execution.get("capture_output", False))
-        case.shell = bool(execution.get("shell", False))
+            execution_updates["log_file"] = execution["log_file"]
         if "command_failure_policy" in execution:
-            case.command_failure_policy = execution["command_failure_policy"]
+            execution_updates["command_failure_policy"] = execution["command_failure_policy"]
         if "harvest_failure_policy" in execution:
-            case.harvest_failure_policy = execution["harvest_failure_policy"]
+            execution_updates["harvest_failure_policy"] = execution["harvest_failure_policy"]
         if "max_attempts" in execution:
-            case.max_attempts = int(execution["max_attempts"])
-        case._validate_failure_policies()
+            execution_updates["max_attempts"] = int(execution["max_attempts"])
+        case._replace_execution(**execution_updates)
         return case
 
     def _append_lifecycle_event(

@@ -23,12 +23,16 @@ def _case(tmp_path, command, output_files=None, policy=None, harvest=None, attem
     case.run_case_main_dir = "runs"
     case.run_type = "new"
     case.exe_cmd = [command]
+    # Set max_attempts before command_failure_policy: each attribute write
+    # re-validates the full ExecutionSettings immediately (LAB-EXEC-SETTINGS-01),
+    # so a "retry" policy must never be applied while max_attempts is still
+    # its <2 default.
+    if attempts is not None:
+        case.max_attempts = attempts
     if policy is not None:
         case.command_failure_policy = policy
     if harvest is not None:
         case.harvest_failure_policy = harvest
-    if attempts is not None:
-        case.max_attempts = attempts
     return case
 
 
@@ -58,7 +62,7 @@ def test_invalid_policies_rejected(tmp_path):
         Case(name="x", output_files={}, harvest_failure_policy="retry")
     with pytest.raises(CaseExecutionError, match="max_attempts must be >= 2"):
         Case(name="x", output_files={}, command_failure_policy="retry", max_attempts=1)
-    with pytest.raises(CaseExecutionError, match="max_attempts must be an integer"):
+    with pytest.raises(CaseExecutionError, match="max_attempts must be >= 1"):
         Case(name="x", output_files={}, max_attempts=0)
 
 

@@ -235,8 +235,8 @@ def test_section_6_post_output_feedback_adaptive_loop(tmp_path):
 def test_section_6_failure_handling_policies(tmp_path):
     # 1. Case with command_failure_policy="retry" and max_attempts=3
     case_retry = Case(name="retry_case", output_files={})
-    case_retry.command_failure_policy = "retry"
     case_retry.max_attempts = 3
+    case_retry.command_failure_policy = "retry"
     assert case_retry.command_failure_policy == "retry"
     assert case_retry.max_attempts == 3
 

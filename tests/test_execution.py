@@ -5,6 +5,7 @@ from pathlib import Path
 from labeeb.case import Case
 from labeeb.database import Database
 from labeeb.execution import (
+    ExecutionBackend,
     ExecutionResult,
     LocalExecutionBackend,
     append_execution_event,
@@ -83,7 +84,7 @@ def test_execution_events_can_be_appended_as_jsonl(tmp_path):
 
 
 def test_case_accepts_injected_execution_backend(tmp_path):
-    class RecordingBackend:
+    class RecordingBackend(ExecutionBackend):
         def __init__(self):
             self.commands = []
 

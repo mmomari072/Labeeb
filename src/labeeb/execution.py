@@ -6,8 +6,9 @@ import os
 import shlex
 import subprocess
 import time
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
+from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Union
 
@@ -297,6 +298,116 @@ class LocalExecutionBackend(ExecutionBackend):
             message=message,
             timed_out=bool(getattr(result, "timed_out", False)),
         )
+
+
+class FailurePolicy(str, Enum):
+    """Behavior on command-execution failure.
+
+    A ``str`` subclass so legacy comparisons like ``policy == "stop"``
+    (or code that persists/reads the policy as a plain string) keep working.
+    """
+
+    STOP = "stop"
+    CONTINUE = "continue"
+    RETRY = "retry"
+
+
+class HarvestFailurePolicy(str, Enum):
+    """Behavior on output-harvesting (post-processing) failure."""
+
+    STOP = "stop"
+    CONTINUE = "continue"
+
+
+@dataclass(frozen=True)
+class ExecutionSettings:
+    """Consolidated execution configuration for a :class:`~labeeb.case.Case`.
+
+    Frozen to prevent mutation mid-execution; construct a new instance
+    (e.g. via :func:`dataclasses.replace`) to change settings between runs.
+    """
+
+    # Command execution
+    timeout: Optional[float] = None
+    shell: Optional[bool] = None
+    capture_output: bool = False
+    log_file: Optional[str] = None
+    execution_backend: ExecutionBackend = field(default_factory=LocalExecutionBackend)
+
+    # Failure handling
+    command_failure_policy: FailurePolicy = FailurePolicy.STOP
+    harvest_failure_policy: HarvestFailurePolicy = HarvestFailurePolicy.STOP
+    max_attempts: int = 1
+
+    # Concurrency (defaults for launch())
+    parallel: bool = False
+    n_workers: Optional[int] = None
+
+    # Observability
+    verbose: bool = False
+
+    def __post_init__(self) -> None:
+        # --- Coerce policy strings to enums -------------------------------
+        command_failure_policy = self.command_failure_policy
+        if not isinstance(command_failure_policy, FailurePolicy):
+            try:
+                command_failure_policy = FailurePolicy(command_failure_policy)
+            except ValueError as exc:
+                valid = ", ".join(repr(p.value) for p in FailurePolicy)
+                raise ValueError(
+                    f"command_failure_policy must be one of {valid}, "
+                    f"got {command_failure_policy!r}"
+                ) from exc
+            object.__setattr__(self, "command_failure_policy", command_failure_policy)
+
+        harvest_failure_policy = self.harvest_failure_policy
+        if not isinstance(harvest_failure_policy, HarvestFailurePolicy):
+            try:
+                harvest_failure_policy = HarvestFailurePolicy(harvest_failure_policy)
+            except ValueError as exc:
+                valid = ", ".join(repr(p.value) for p in HarvestFailurePolicy)
+                raise ValueError(
+                    f"harvest_failure_policy must be one of {valid}, "
+                    f"got {harvest_failure_policy!r}"
+                ) from exc
+            object.__setattr__(self, "harvest_failure_policy", harvest_failure_policy)
+
+        # --- max_attempts ---------------------------------------------------
+        if not isinstance(self.max_attempts, int) or isinstance(self.max_attempts, bool):
+            raise TypeError(
+                f"max_attempts must be an int, got {type(self.max_attempts).__name__}"
+            )
+        if self.max_attempts < 1:
+            raise ValueError(f"max_attempts must be >= 1, got {self.max_attempts}")
+        if command_failure_policy == FailurePolicy.RETRY and self.max_attempts < 2:
+            raise ValueError(
+                "max_attempts must be >= 2 when "
+                f"command_failure_policy={FailurePolicy.RETRY.value!r}, "
+                f"got max_attempts={self.max_attempts}"
+            )
+
+        # --- timeout ---------------------------------------------------------
+        if self.timeout is not None:
+            if not isinstance(self.timeout, (int, float)) or isinstance(self.timeout, bool):
+                raise TypeError(f"timeout must be a number, got {type(self.timeout).__name__}")
+            if self.timeout <= 0:
+                raise ValueError(f"timeout must be > 0, got {self.timeout}")
+
+        # --- n_workers ---------------------------------------------------------
+        if self.n_workers is not None:
+            if not isinstance(self.n_workers, int) or isinstance(self.n_workers, bool):
+                raise TypeError(
+                    f"n_workers must be an int, got {type(self.n_workers).__name__}"
+                )
+            if self.n_workers < 1:
+                raise ValueError(f"n_workers must be >= 1, got {self.n_workers}")
+
+        # --- execution_backend ---------------------------------------------------
+        if not isinstance(self.execution_backend, ExecutionBackend):
+            raise TypeError(
+                "execution_backend must be an instance of ExecutionBackend, "
+                f"got {type(self.execution_backend).__name__}"
+            )
 
 
 def export_execution_events(

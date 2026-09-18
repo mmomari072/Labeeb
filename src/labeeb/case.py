@@ -8,6 +8,8 @@ import logging
 import os
 import shlex
 import shutil
+import warnings
+from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
@@ -17,7 +19,13 @@ import pandas as pd
 from .coupled_unit import CoupledUnit
 from .database import Attribute, Database
 from .exceptions import CaseExecutionError, TemplateError
-from .execution import ExecutionBackend, LocalExecutionBackend
+from .execution import (
+    ExecutionBackend,
+    ExecutionSettings,
+    FailurePolicy,
+    HarvestFailurePolicy,
+    LocalExecutionBackend,
+)
 from .extractors import run_extractor
 from .logging_config import CaseLoggerAdapter, redact_sensitive
 from .utils import file_io, os_ops, progress
@@ -261,7 +269,10 @@ class Case(CoupledUnit):
         self.attributes: List[str] = []
         self.FlagsMap: Union[FlagsMap, Dict[str, str]] = {}
         self.exe_cmd: List[str] = []
-        self.execution_backend: ExecutionBackend = LocalExecutionBackend()
+        # Consolidated execution configuration (LAB-EXEC-SETTINGS-01). Public
+        # attribute access (case.timeout, case.shell, ...) is preserved via
+        # property shims below for backward compatibility.
+        self._execution: ExecutionSettings = ExecutionSettings()
         self.harvesters: Dict[str, Any] = {}
         self.input_files: List[file_io.File] = []
         self.assignment_map: Optional[Dict[str, Any]] = None
@@ -287,10 +298,6 @@ class Case(CoupledUnit):
         # are read and before results are finalized (LAB-POST-OUTPUT-HOOKS-01).
         self.post_output_hooks: List[Tuple[str, Callable[..., Any]]] = []
         self.post_output_hook_failures: List[str] = []
-
-        # Secure subprocess execution: None/False -> argv-style (no shell);
-        # True -> explicit shell semantics for legacy command strings.
-        self.shell: Optional[bool] = None
 
         # Cooperative cancellation (V2-EXEC-01): sticky once requested;
         # honored at command/attempt boundaries (between commands, not
@@ -320,33 +327,140 @@ class Case(CoupledUnit):
         # Repeated command retries/recorded failures are stored in
         # execution_history and surfaced through `_case_failed` / `failure` so
         # launchers and campaigns can record the failure without an exception.
-        self.command_failure_policy: str = "stop"
-        self.harvest_failure_policy: str = "stop"
-        self.max_attempts: int = 1
+        # These are now backed by ``self._execution`` (see property shims
+        # below); validation happens inside ExecutionSettings.__post_init__.
         self._case_failed: bool = False
         self.failure: Optional[str] = None
 
         self._parse_kwargs(**kwargs)
-        self._validate_failure_policies()
 
-    def _validate_failure_policies(self) -> None:
-        """Validate failure-policy configuration (called after kwargs parsing)."""
-        if self.command_failure_policy not in ("stop", "continue", "retry"):
-            raise CaseExecutionError(
-                "command_failure_policy must be 'stop', 'continue', or 'retry', "
-                f"got '{self.command_failure_policy}'"
-            )
-        if self.harvest_failure_policy not in ("stop", "continue"):
-            raise CaseExecutionError(
-                "harvest_failure_policy must be 'stop' or 'continue', "
-                f"got '{self.harvest_failure_policy}'"
-            )
-        if not isinstance(self.max_attempts, int) or self.max_attempts < 1:
-            raise CaseExecutionError("max_attempts must be an integer >= 1")
-        if self.command_failure_policy == "retry" and self.max_attempts < 2:
-            raise CaseExecutionError(
-                "max_attempts must be >= 2 when command_failure_policy='retry'"
-            )
+    # ------------------------------------------------------------------
+    # ExecutionSettings-backed property shims (LAB-EXEC-SETTINGS-01).
+    # Reads are silent; writes emit DeprecationWarning and go through
+    # dataclasses.replace() so ExecutionSettings.__post_init__ re-validates.
+    # ------------------------------------------------------------------
+
+    @property
+    def execution(self) -> ExecutionSettings:
+        """The consolidated, immutable execution configuration."""
+        return self._execution
+
+    def _replace_execution(self, **updates: Any) -> None:
+        """Rebuild ``self._execution`` with ``updates``, translating
+        ExecutionSettings validation errors into CaseExecutionError for
+        backward compatibility with the legacy validation contract."""
+        try:
+            self._execution = replace(self._execution, **updates)
+        except (TypeError, ValueError) as exc:
+            raise CaseExecutionError(str(exc)) from exc
+
+    @property
+    def timeout(self) -> Optional[float]:
+        return self._execution.timeout
+
+    @timeout.setter
+    def timeout(self, value: Optional[float]) -> None:
+        warnings.warn(
+            "Case.timeout is deprecated; use Case.execution.timeout (removed in v4.0)",
+            DeprecationWarning, stacklevel=2,
+        )
+        self._replace_execution(timeout=value)
+
+    @property
+    def shell(self) -> Optional[bool]:
+        return self._execution.shell
+
+    @shell.setter
+    def shell(self, value: Optional[bool]) -> None:
+        warnings.warn(
+            "Case.shell is deprecated; use Case.execution.shell (removed in v4.0)",
+            DeprecationWarning, stacklevel=2,
+        )
+        self._replace_execution(shell=value)
+
+    @property
+    def capture_output(self) -> bool:
+        return self._execution.capture_output
+
+    @capture_output.setter
+    def capture_output(self, value: bool) -> None:
+        warnings.warn(
+            "Case.capture_output is deprecated; use Case.execution.capture_output (removed in v4.0)",
+            DeprecationWarning, stacklevel=2,
+        )
+        self._replace_execution(capture_output=value)
+
+    @property
+    def log_file(self) -> Optional[str]:
+        return self._execution.log_file
+
+    @log_file.setter
+    def log_file(self, value: Optional[str]) -> None:
+        warnings.warn(
+            "Case.log_file is deprecated; use Case.execution.log_file (removed in v4.0)",
+            DeprecationWarning, stacklevel=2,
+        )
+        self._replace_execution(log_file=value)
+
+    @property
+    def execution_backend(self) -> ExecutionBackend:
+        return self._execution.execution_backend
+
+    @execution_backend.setter
+    def execution_backend(self, value: ExecutionBackend) -> None:
+        warnings.warn(
+            "Case.execution_backend is deprecated; use Case.execution.execution_backend (removed in v4.0)",
+            DeprecationWarning, stacklevel=2,
+        )
+        self._replace_execution(execution_backend=value)
+
+    @property
+    def command_failure_policy(self) -> FailurePolicy:
+        return self._execution.command_failure_policy
+
+    @command_failure_policy.setter
+    def command_failure_policy(self, value: Union[str, FailurePolicy]) -> None:
+        warnings.warn(
+            "Case.command_failure_policy is deprecated; use Case.execution.command_failure_policy (removed in v4.0)",
+            DeprecationWarning, stacklevel=2,
+        )
+        self._replace_execution(command_failure_policy=value)
+
+    @property
+    def harvest_failure_policy(self) -> HarvestFailurePolicy:
+        return self._execution.harvest_failure_policy
+
+    @harvest_failure_policy.setter
+    def harvest_failure_policy(self, value: Union[str, HarvestFailurePolicy]) -> None:
+        warnings.warn(
+            "Case.harvest_failure_policy is deprecated; use Case.execution.harvest_failure_policy (removed in v4.0)",
+            DeprecationWarning, stacklevel=2,
+        )
+        self._replace_execution(harvest_failure_policy=value)
+
+    @property
+    def max_attempts(self) -> int:
+        return self._execution.max_attempts
+
+    @max_attempts.setter
+    def max_attempts(self, value: int) -> None:
+        warnings.warn(
+            "Case.max_attempts is deprecated; use Case.execution.max_attempts (removed in v4.0)",
+            DeprecationWarning, stacklevel=2,
+        )
+        self._replace_execution(max_attempts=value)
+
+    @property
+    def verbose(self) -> bool:
+        return self._execution.verbose
+
+    @verbose.setter
+    def verbose(self, value: bool) -> None:
+        warnings.warn(
+            "Case.verbose is deprecated; use Case.execution.verbose (removed in v4.0)",
+            DeprecationWarning, stacklevel=2,
+        )
+        self._replace_execution(verbose=value)
 
     def import_database(self, filename: str = "omari.xlsx", sheetname: str = "omari") -> "Case":
         """
@@ -1167,13 +1281,21 @@ class Case(CoupledUnit):
             })
 
     def _parse_kwargs(self, **kwargs: Any) -> None:
+        execution_updates: Dict[str, Any] = {}
         for key, val in kwargs.items():
-            if key in self.__dict__:
+            if key in ExecutionSettings.__dataclass_fields__:
+                # Route ExecutionSettings fields directly (no deprecation
+                # warning: constructor/set_vars kwargs are the supported
+                # entry point, unlike direct attribute assignment).
+                execution_updates[key] = val
+            elif key in self.__dict__:
                 setattr(self, key, val)
             elif key.lower() in ["root_dir", "main_dir"]:
                 self.main_dir = val
             else:
                 logger.warning(f"Case setup parameter '{key}' is not supported")
+        if execution_updates:
+            self._replace_execution(**execution_updates)
 
     def add_post_output_hook(self, name: str, fn: Optional[Callable[..., Any]] = None) -> "Case":
         """Register a post-output hook.
@@ -1273,7 +1395,6 @@ class Case(CoupledUnit):
     def set_vars(self, **kwargs: Any) -> "Case":
         """Set execution parameters dynamically."""
         self._parse_kwargs(**kwargs)
-        self._validate_failure_policies()
         return self
 
     def _generate_case_info_json(self) -> Dict[str, Any]:
